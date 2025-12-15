@@ -105,9 +105,33 @@ const register = async (req, res) => {
   }
 };
 
+const listAdmins = async (req, res) => {
+  try {
+    const admins = await User.findAll({
+      where: { role: 'SUPERADMIN' },
+      order: [['date_creation', 'DESC']]
+    });
+
+    return res.status(200).json(
+      admins.map((u) => ({
+        id_user: u.id_user,
+        nom: u.nom,
+        prenom: u.prenom,
+        email: u.email,
+        role: u.role,
+        date_creation: u.date_creation
+      }))
+    );
+  } catch (error) {
+    console.error('AuthController.listAdmins error:', error);
+    return res.status(500).json({ message: 'Erreur serveur lors de la récupération des administrateurs' });
+  }
+};
+
 module.exports = {
   login,
-  register
+  register,
+  listAdmins
 };
 
 

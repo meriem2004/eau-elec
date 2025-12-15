@@ -1,4 +1,7 @@
-const { Compteur, Releve } = require('../models');
+const { Op } = require('sequelize');
+const {
+  Compteur, Releve, Adresse, Quartier, Agent
+} = require('../models');
 
 const createReleve = async (req, res) => {
   try {
@@ -50,8 +53,79 @@ const createReleve = async (req, res) => {
   }
 };
 
+const listReleves = async (req, res) => {
+  try {
+    const { dateFrom, dateTo, quartier } = req.query;
+
+    const where = {};
+
+    if (dateFrom || dateTo) {
+      where.date_releve = {};
+      if (dateFrom) {
+        where.date_releve[Op.gte] = new Date(dateFrom);
+      }
+      if (dateTo) {
+        where.date_releve[Op.lte] = new Date(dateTo);
+      }
+    }
+
+    const quartierFilter = quartier && quartier !== 'ALL'
+      ? { libelle: quartier }
+      : {};
+
+    const releves = await Releve.findAll({
+      where,
+      include: [
+        {
+          model: Compteur,
+          include: [
+            {
+              model: Adresse,
+              include: [
+                {
+                  model: Quartier,
+                  where: quartierFilter
+                }
+              ]
+            }
+          ]
+        },
+        {
+          model: Agent
+        }
+      ],
+      order: [['date_releve', 'DESC']],
+      limit: 500
+    });
+
+    const payload = releves.map((r) => ({
+      id_releve: r.id_releve,
+      date_releve: r.date_releve,
+      ancien_index: r.ancien_index,
+      nouvel_index: r.nouvel_index,
+      consommation: r.consommation,
+      numero_serie: r.Compteur?.numero_serie,
+      type_compteur: r.Compteur?.type,
+      quartier: r.Compteur?.Adresse?.Quartier?.libelle,
+      agent: r.Agent
+        ? {
+            id_agent: r.Agent.id_agent,
+            nom: r.Agent.nom,
+            prenom: r.Agent.prenom
+          }
+        : null
+    }));
+
+    return res.status(200).json(payload);
+  } catch (error) {
+    console.error('ReleveController.listReleves error:', error);
+    return res.status(500).json({ message: 'Erreur serveur lors de la récupération des relevés' });
+  }
+};
+
 module.exports = {
-  createReleve
+  createReleve,
+  listReleves
 };
 
 

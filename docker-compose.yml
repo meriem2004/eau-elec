@@ -35,6 +35,21 @@ services:
       - db
       - mailhog
 
+  simulator:
+    build: ./backend
+    container_name: si_releves_simulator
+    environment:
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_NAME: si_releves_db
+      DB_USER: root
+      DB_PASSWORD: root
+      SIM_API_URL: http://backend:3000/api
+    depends_on:
+      - db
+      - backend
+    command: ["npm", "run", "simulate"]
+
   frontend:
     build: ./frontend
     container_name: si_releves_frontend

@@ -7,6 +7,7 @@
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "seed": "node src/seed.js",
+    "simulate": "node scripts/simulateTraffic.js",
     "test": "jest"
   },
   "keywords": [],
@@ -25,6 +26,7 @@
   },
   "devDependencies": {
     "nodemon": "^3.1.7",
-    "jest": "^29.7.0"
+    "jest": "^29.7.0",
+    "supertest": "^7.1.1"
   }
 }

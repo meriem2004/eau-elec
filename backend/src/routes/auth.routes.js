@@ -6,7 +6,9 @@ const router = express.Router();
 
 router.post('/login', AuthController.login);
 router.post('/register', verifyToken, isSuperAdmin, AuthController.register);
+router.get('/admins', verifyToken, isSuperAdmin, AuthController.listAdmins);
 
 module.exports = router;
+
 
 
