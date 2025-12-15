@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: mysql:8.0
@@ -32,6 +30,7 @@ services:
       DB_PASSWORD: root
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
+      SEED_ON_START: true
     depends_on:
       - db
       - mailhog
