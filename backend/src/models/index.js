@@ -32,9 +32,19 @@ const User = sequelize.define(
       allowNull: false,
       defaultValue: 'USER'
     },
+    must_change_password: {
+      // Indique si l'utilisateur doit changer son mot de passe à la prochaine connexion
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
     date_creation: {
       type: DataTypes.DATE,
       defaultValue: DataTypes.NOW
+    },
+    date_modification: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   },
   {
@@ -208,6 +218,44 @@ const Releve = sequelize.define(
   }
 );
 
+// LogConnexion -> t_log_connexion
+const LogConnexion = sequelize.define(
+  'LogConnexion',
+  {
+    id_log: {
+      type: DataTypes.BIGINT,
+      primaryKey: true,
+      autoIncrement: true
+    },
+    id_user: {
+      type: DataTypes.INTEGER,
+      allowNull: true
+    },
+    email: {
+      type: DataTypes.STRING(100),
+      allowNull: false
+    },
+    date_connexion: {
+      type: DataTypes.DATE,
+      allowNull: false,
+      defaultValue: DataTypes.NOW
+    },
+    ip_address: {
+      type: DataTypes.STRING(45),
+      allowNull: true
+    },
+    success: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    }
+  },
+  {
+    tableName: 't_log_connexion',
+    timestamps: false
+  }
+);
+
 // Associations (conformes aux FKs du schema.sql)
 Quartier.hasMany(Agent, { foreignKey: 'id_quartier' });
 Agent.belongsTo(Quartier, { foreignKey: 'id_quartier' });
@@ -227,6 +275,9 @@ Releve.belongsTo(Compteur, { foreignKey: 'numero_serie' });
 Agent.hasMany(Releve, { foreignKey: 'id_agent' });
 Releve.belongsTo(Agent, { foreignKey: 'id_agent' });
 
+User.hasMany(LogConnexion, { foreignKey: 'id_user' });
+LogConnexion.belongsTo(User, { foreignKey: 'id_user' });
+
 module.exports = {
   sequelize,
   User,
@@ -235,7 +286,8 @@ module.exports = {
   Client,
   Adresse,
   Compteur,
-  Releve
+  Releve,
+  LogConnexion
 };
 
 

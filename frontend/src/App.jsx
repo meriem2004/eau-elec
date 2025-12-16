@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import ChangePassword from './pages/ChangePassword';
 
 function App() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
   const [showApp, setShowApp] = useState(false);
 
   useEffect(() => {
@@ -23,6 +24,10 @@ function App() {
 
   if (!isAuthenticated) {
     return <Login onLoginSuccess={() => setShowApp(true)} />;
+  }
+
+  if (user?.must_change_password) {
+    return <ChangePassword />;
   }
 
   return <Dashboard />;

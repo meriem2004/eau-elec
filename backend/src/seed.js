@@ -10,30 +10,40 @@ async function seed() {
   await sequelize.sync({ alter: true });
 
   const userCount = await User.count();
-  if (userCount > 0) {
+  const clientCount = await Client.count();
+  
+  if (userCount > 0 && clientCount > 0) {
     console.log('La base semble déjà peuplée, abandon du seeding.');
     return;
   }
 
   console.log('Seeding de la base SI Relevés...');
 
-    // 1 Superadmin
-    const adminPasswordPlain = 'password123';
-    const adminPasswordHashed = await bcrypt.hash(adminPasswordPlain, 10);
-    const superadmin = await User.create({
-      nom: 'ADMIN',
-      prenom: 'Super',
-      email: 'admin@ree.ma',
-      password: adminPasswordHashed,
-      role: 'SUPERADMIN'
-    });
-    console.log('Superadmin créé:', superadmin.email, '/', adminPasswordPlain);
+    // 1 Superadmin (seulement si pas déjà créé)
+    let superadmin = await User.findOne({ where: { email: 'admin@ree.ma' } });
+    if (!superadmin) {
+      const adminPasswordPlain = 'password123';
+      const adminPasswordHashed = await bcrypt.hash(adminPasswordPlain, 10);
+      superadmin = await User.create({
+        nom: 'ADMIN',
+        prenom: 'Super',
+        email: 'admin@ree.ma',
+        password: adminPasswordHashed,
+        role: 'SUPERADMIN'
+      });
+      console.log('Superadmin créé:', superadmin.email, '/', adminPasswordPlain);
+    } else {
+      console.log('Superadmin existe déjà:', superadmin.email);
+    }
 
-    // 5 Quartiers
+    // 5 Quartiers (seulement si pas déjà créés)
     const quartiersLibelles = ['Agdal', 'Hay Riad', 'Hassan', 'Yacoub El Mansour', 'Souissi'];
     const quartiers = [];
     for (const libelle of quartiersLibelles) {
-      const q = await Quartier.create({ libelle, ville: 'Rabat' });
+      let q = await Quartier.findOne({ where: { libelle } });
+      if (!q) {
+        q = await Quartier.create({ libelle, ville: 'Rabat' });
+      }
       quartiers.push(q);
     }
 
@@ -55,23 +65,35 @@ async function seed() {
       agents.push(agent);
     }
 
-    // 100 Clients & Adresses
+    // 100 Clients & Adresses (seulement si pas déjà créés)
+    const existingClientCount = await Client.count();
     const clients = [];
     const adresses = [];
-    for (let i = 0; i < 100; i += 1) {
-      const client = await Client.create({
-        ref_client_erp: `CL${String(i + 1).padStart(5, '0')}`,
-        nom_complet: `${faker.name.lastName().toUpperCase()} ${faker.name.firstName()}`
-      });
-      clients.push(client);
+    
+    if (existingClientCount === 0) {
+      for (let i = 0; i < 100; i += 1) {
+        const client = await Client.create({
+          ref_client_erp: `CL${String(i + 1).padStart(5, '0')}`,
+          nom_complet: `${faker.name.lastName().toUpperCase()} ${faker.name.firstName()}`
+        });
+        clients.push(client);
 
-      const q = quartiers[Math.floor(Math.random() * quartiers.length)];
-      const adresse = await Adresse.create({
-        ref_adresse_erp: `AD${String(i + 1).padStart(5, '0')}`,
-        libelle_complet: faker.address.streetAddress(),
-        id_quartier: q.id_quartier
-      });
-      adresses.push(adresse);
+        const q = quartiers[Math.floor(Math.random() * quartiers.length)];
+        const adresse = await Adresse.create({
+          ref_adresse_erp: `AD${String(i + 1).padStart(5, '0')}`,
+          libelle_complet: faker.address.streetAddress(),
+          id_quartier: q.id_quartier
+        });
+        adresses.push(adresse);
+      }
+      console.log(`${clients.length} clients et ${adresses.length} adresses créés`);
+    } else {
+      // Récupérer les clients existants
+      const existingClients = await Client.findAll();
+      clients.push(...existingClients);
+      const existingAdresses = await Adresse.findAll();
+      adresses.push(...existingAdresses);
+      console.log(`${existingClientCount} clients existants récupérés`);
     }
 
     // 200 Compteurs (Mix Eau / Electricité)

@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import {
   LayoutDashboard, Users, FileText, Settings, LogOut,
-  Activity, Bell
+  Activity, Bell, MapPin, Gauge
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import DashboardOverview from './DashboardOverview';
 import DashboardAdmins from './DashboardAdmins';
 import DashboardReleves from './DashboardReleves';
+import DashboardCompteurs from './DashboardCompteurs';
+import DashboardAdresses from './DashboardAdresses';
+import DashboardAgents from './DashboardAgents';
+import DashboardReports from './DashboardReports';
 
 const SidebarItem = ({ icon: Icon, label, active, onClick, hidden }) => {
   if (hidden) return null;
@@ -54,6 +58,18 @@ function Dashboard() {
             onClick={() => setActiveSection('releves')}
           />
           <SidebarItem
+            icon={Gauge}
+            label="Compteurs"
+            active={activeSection === 'compteurs'}
+            onClick={() => setActiveSection('compteurs')}
+          />
+          <SidebarItem
+            icon={MapPin}
+            label="Adresses"
+            active={activeSection === 'adresses'}
+            onClick={() => setActiveSection('adresses')}
+          />
+          <SidebarItem
             icon={Users}
             label="Utilisateurs"
             active={activeSection === 'admins'}
@@ -61,10 +77,16 @@ function Dashboard() {
             hidden={user?.role !== 'SUPERADMIN'}
           />
           <SidebarItem
+            icon={Users}
+            label="Agents"
+            active={activeSection === 'agents'}
+            onClick={() => setActiveSection('agents')}
+          />
+          <SidebarItem
             icon={Settings}
-            label="Paramètres"
-            active={false}
-            onClick={() => {}}
+            label="Rapports"
+            active={activeSection === 'reports'}
+            onClick={() => setActiveSection('reports')}
           />
         </nav>
 
@@ -85,6 +107,10 @@ function Dashboard() {
             {activeSection === 'overview' && 'Tableau de bord'}
             {activeSection === 'releves' && 'Relevés'}
             {activeSection === 'admins' && 'Gestion des utilisateurs'}
+            {activeSection === 'compteurs' && 'Gestion des compteurs'}
+            {activeSection === 'adresses' && 'Gestion des adresses'}
+            {activeSection === 'agents' && 'Affectation des agents'}
+            {activeSection === 'reports' && 'Rapports & comparatifs'}
           </h2>
 
           <div className="flex items-center gap-6">
@@ -116,6 +142,10 @@ function Dashboard() {
           {activeSection === 'overview' && <DashboardOverview />}
           {activeSection === 'admins' && <DashboardAdmins />}
           {activeSection === 'releves' && <DashboardReleves />}
+          {activeSection === 'compteurs' && <DashboardCompteurs />}
+          {activeSection === 'adresses' && <DashboardAdresses />}
+          {activeSection === 'agents' && <DashboardAgents />}
+          {activeSection === 'reports' && <DashboardReports />}
         </main>
       </div>
     </div>

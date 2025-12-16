@@ -53,12 +53,22 @@ services:
   frontend:
     build: ./frontend
     container_name: si_releves_frontend
-    ports:
-      - "4200:80"
     depends_on:
       - backend
 
+  nginx:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.nginx
+    container_name: si_releves_nginx
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "4200:443"
+
 volumes:
   db_data:
+
 
 

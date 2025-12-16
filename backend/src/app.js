@@ -9,6 +9,14 @@ const { seed } = require('./seed');
 const authRoutes = require('./routes/auth.routes');
 const relevesRoutes = require('./routes/releves.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const adressesRoutes = require('./routes/adresses.routes');
+const compteursRoutes = require('./routes/compteurs.routes');
+const agentsRoutes = require('./routes/agents.routes');
+const reportsRoutes = require('./routes/reports.routes');
+const integrationRoutes = require('./routes/integration.routes');
+const clientsRoutes = require('./routes/clients.routes');
+const mobileRoutes = require('./routes/mobile.routes');
+const mockRoutes = require('./routes/mock.routes');
 
 const app = express();
 
@@ -25,6 +33,14 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/releves', relevesRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/adresses', adressesRoutes);
+app.use('/api/compteurs', compteursRoutes);
+app.use('/api/agents', agentsRoutes);
+app.use('/api/reports', reportsRoutes);
+app.use('/api/integration', integrationRoutes);
+app.use('/api/clients', clientsRoutes);
+app.use('/api/mobile', mobileRoutes);
+app.use('/api/mock', mockRoutes);
 
 // Start server after DB connection
 const PORT = process.env.PORT || 3000;

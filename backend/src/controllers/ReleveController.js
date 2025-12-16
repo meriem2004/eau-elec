@@ -40,11 +40,52 @@ const createReleve = async (req, res) => {
     compteur.index_actuel = nouvel_index;
     await compteur.save();
 
-    // Simulation appel ERP Facturation
-    console.log('Simulation appel ERP...', {
-      numero_serie,
-      consommation
-    });
+    // Simulation appel ERP Facturation via endpoint mock
+    try {
+      const http = require('http');
+      const apiUrl = process.env.API_URL || 'http://localhost:3000';
+      const url = new URL(`${apiUrl}/api/mock/facturation/consommations`);
+      
+      const postData = JSON.stringify({
+        numero_serie,
+        consommation,
+        date_releve: releve.date_releve,
+        id_client: compteur.id_client
+      });
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: url.pathname,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(postData),
+          Authorization: req.headers.authorization || ''
+        }
+      };
+
+      await new Promise((resolve, reject) => {
+        const req = http.request(options, (res) => {
+          let data = '';
+          res.on('data', (chunk) => { data += chunk; });
+          res.on('end', () => {
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              resolve();
+            } else {
+              reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+            }
+          });
+        });
+        req.on('error', reject);
+        req.write(postData);
+        req.end();
+      });
+    } catch (factError) {
+      // Ne pas faire échouer la création du relevé si l'appel mock échoue
+      // eslint-disable-next-line no-console
+      console.warn('Erreur lors de l\'appel mock facturation (non bloquant):', factError.message);
+    }
 
     return res.status(201).json(releve);
   } catch (error) {

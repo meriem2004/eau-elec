@@ -96,12 +96,35 @@ async function simulateOnce(token) {
   return data;
 }
 
+async function waitForDatabase(maxRetries = 20, retryDelayMs = 5000) {
+  let attempt = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    attempt += 1;
+    try {
+      console.log(`⏳ simulateTraffic: tentative connexion DB (${attempt}/${maxRetries})...`);
+      // eslint-disable-next-line no-await-in-loop
+      await sequelize.authenticate();
+      console.log('✅ simulateTraffic: connexion DB OK.');
+      return;
+    } catch (err) {
+      if (attempt >= maxRetries) {
+        throw err;
+      }
+      console.warn(
+        `⚠️  simulateTraffic: connexion DB échouée (${attempt}/${maxRetries}), nouvelle tentative dans ${retryDelayMs / 1000}s...`,
+        err.message
+      );
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    }
+  }
+}
+
 async function main() {
   console.log('🔄 Démarrage de la simulation de trafic...');
 
-  // S'assurer que la connexion DB fonctionne (utilisé pour tirer les compteurs/agents)
-  await sequelize.authenticate();
-  console.log('✅ Connexion DB OK.');
+  await waitForDatabase();
 
   const token = await login();
   console.log('✅ Authentifié pour la simulation.');
