@@ -1,21 +1,81 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Plus, Zap, Droplets, MapPin, User, ChevronLeft, ChevronRight, RefreshCw, X } from 'lucide-react';
+
+const CompteurRow = ({ c, index }) => {
+  const isElec = c.type === 'ELECTRICITE' || c.type === 'ELEC';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.03 }}
+      className={`group relative grid grid-cols-12 gap-4 items-center p-3 my-1 rounded-lg border border-white/5 hover:bg-white/5 transition-all cursor-pointer ${isElec ? 'hover:border-elec-500/30 border-l-[3px] border-l-elec-500' : 'hover:border-water-500/30 border-l-[3px] border-l-water-500'
+        } bg-slate-800/40 backdrop-blur-sm shadow-sm`}
+    >
+      {/* Serial & Type */}
+      <div className="col-span-3 flex items-center gap-3">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${isElec ? 'bg-elec-500/10 border-elec-500/20 text-elec-400' : 'bg-water-500/10 border-water-500/20 text-water-400'}`}>
+          {isElec ? <Zap size={14} /> : <Droplets size={14} />}
+        </div>
+        <div>
+          <span className="block text-sm font-bold text-slate-200 font-mono tracking-wide">{c.numero_serie}</span>
+          <span className="text-[10px] text-slate-500 font-bold uppercase">{c.type}</span>
+        </div>
+      </div>
+
+      {/* Address */}
+      <div className="col-span-4 pl-4 border-l border-white/5">
+        <div className="flex items-center gap-1.5 mb-0.5">
+          <MapPin size={12} className="text-slate-500" />
+          <span className="text-xs text-slate-300 truncate">{c.adresse?.libelle_complet || 'Adresse inconnue'}</span>
+        </div>
+        <span className="text-[10px] text-slate-500 ml-4.5 block uppercase tracking-wider">{c.adresse?.quartier?.libelle || '-'}</span>
+      </div>
+
+      {/* Client */}
+      <div className="col-span-3 flex items-center gap-2 pl-4 border-l border-white/5">
+        {c.client ? (
+          <>
+            <div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-300 border border-white/10">
+              {c.client.nom_complet.charAt(0)}
+            </div>
+            <span className="text-xs text-slate-300 truncate">{c.client.nom_complet}</span>
+          </>
+        ) : (
+          <span className="text-[10px] text-slate-500 italic">Aucun client</span>
+        )}
+      </div>
+
+      {/* Index */}
+      <div className="col-span-2 text-right">
+        <span className="block text-[10px] text-slate-500">Index Actuel</span>
+        <span className="text-sm font-bold text-white font-mono">{c.index_actuel}</span>
+      </div>
+
+    </motion.div>
+  );
+};
 
 function DashboardCompteurs() {
   const [compteurs, setCompteurs] = useState([]);
   const [adresses, setAdresses] = useState([]);
+  const [adressesSansCompteur, setAdressesSansCompteur] = useState([]); // Needed for modal
+  const [quartiers, setQuartiers] = useState([]); // Needed for modal
   const [clients, setClients] = useState([]);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Modal & Form
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createForm, setCreateForm] = useState({
-    numero_serie: '',
-    type: 'EAU',
-    id_adresse: '',
-    id_client: ''
-  });
+  const [createForm, setCreateForm] = useState({ numero_serie: '', type: 'EAU', id_adresse: '', id_client: '' });
+  const [filterQuartier, setFilterQuartier] = useState('');
+  const [searchAdresse, setSearchAdresse] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
@@ -26,7 +86,6 @@ function DashboardCompteurs() {
       const { data } = await api.get('/compteurs');
       setCompteurs(data);
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error(err);
       setError("Impossible de charger les compteurs.");
     } finally {
@@ -38,390 +97,197 @@ function DashboardCompteurs() {
     try {
       const { data } = await api.get('/adresses');
       setAdresses(data);
-      // Charger uniquement les adresses sans compteur pour la popup
-      const { data: adressesSansCompteurData } = await api.get('/adresses', { params: { hasCompteur: 'false' } });
-      setAdressesSansCompteur(adressesSansCompteurData || []);
-      
-      // Extraire les quartiers uniques
+      // Load addresses without counters for popup
+      const { data: adressesSans } = await api.get('/adresses', { params: { hasCompteur: 'false' } });
+      setAdressesSansCompteur(adressesSans || []);
+
       const uniqueQuartiers = [];
-      const seenQuartiers = new Set();
-      adressesSansCompteurData?.forEach((a) => {
-        if (a.quartier && !seenQuartiers.has(a.quartier.id_quartier)) {
-          seenQuartiers.add(a.quartier.id_quartier);
+      const seen = new Set();
+      adressesSans?.forEach(a => {
+        if (a.quartier && !seen.has(a.quartier.id_quartier)) {
+          seen.add(a.quartier.id_quartier);
           uniqueQuartiers.push(a.quartier);
         }
       });
       setQuartiers(uniqueQuartiers);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const loadClients = async () => {
     try {
       const { data } = await api.get('/clients');
       setClients(data || []);
-      // eslint-disable-next-line no-console
-      console.log('Clients chargés:', data?.length || 0);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Erreur lors du chargement des clients:', err);
-      setClients([]);
-    }
+    } catch (e) { console.error(e); }
   };
 
-  useEffect(() => {
-    loadCompteurs();
-    loadAdresses();
-    loadClients();
-  }, []);
-
-  const totalPages = Math.max(1, Math.ceil(compteurs.length / pageSize));
-
-  const currentPageItems = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return compteurs.slice(start, start + pageSize);
-  }, [compteurs, page, pageSize]);
-
-  const handleChangePageSize = (value) => {
-    const size = Number(value);
-    setPageSize(size);
-    setPage(1);
-  };
-
-  const handleCreateInputChange = (e) => {
-    const { name, value } = e.target;
-    setCreateForm((prev) => ({ ...prev, [name]: value }));
-  };
+  useEffect(() => { loadCompteurs(); loadAdresses(); loadClients(); }, []);
 
   const handleCreateCompteur = async (e) => {
     e.preventDefault();
-    setError('');
-    setSuccess('');
     setSubmitting(true);
     try {
       await api.post('/compteurs', createForm);
       setSuccess('Compteur créé avec succès.');
-      setCreateForm({ numero_serie: '', type: 'EAU', id_adresse: '', id_client: '' });
       setShowCreateModal(false);
-      setFilterQuartier('');
-      setSearchAdresse('');
-      await loadCompteurs();
-      await loadAdresses();
+      setCreateForm({ numero_serie: '', type: 'EAU', id_adresse: '', id_client: '' });
+      loadCompteurs();
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      setError(err.response?.data?.message || "Impossible de créer le compteur.");
+      setError(err.response?.data?.message || "Erreur création.");
     } finally {
       setSubmitting(false);
     }
   };
 
+  const filteredData = compteurs; // Add filters later if needed
+  const paginatedData = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredData.slice(start, start + pageSize);
+  }, [filteredData, page, pageSize]);
+  const totalPages = Math.ceil(filteredData.length / pageSize);
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Gestion des compteurs</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Liste des compteurs avec adresse et client associés.
-          </p>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Parc de Compteurs</h2>
+          <p className="text-slate-400 text-sm">Gestion des compteurs eau & électricité.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={async () => {
-              setError('');
-              setSuccess('');
-              // Recharger les adresses sans compteur avant d'ouvrir la popup
-              await loadAdresses();
-              setShowCreateModal(true);
-              setFilterQuartier('');
-              setSearchAdresse('');
-            }}
-            className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
-          >
-            + Ajouter un compteur
-          </button>
-          <button
-            type="button"
-            onClick={loadCompteurs}
-            className="px-3 py-1.5 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100"
-          >
-            Rafraîchir
-          </button>
+        <button
+          onClick={async () => { await loadAdresses(); setShowCreateModal(true); }}
+          className="flex items-center gap-2 px-4 py-2 bg-accent-600 hover:bg-accent-500 text-white rounded-xl font-medium shadow-lg shadow-accent-500/20 transition-all hover:scale-105 active:scale-95 text-sm"
+        >
+          <Plus size={18} /> Nouveau Compteur
+        </button>
+      </div>
+
+      {/* Simple Filter Bar */}
+      <div className="glass-panel p-4 rounded-2xl border border-white/10 flex items-center justify-between">
+        <div className="relative w-64">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+          <input type="text" placeholder="Rechercher compteur..." className="w-full bg-slate-900/50 border border-white/10 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-300 focus:border-accent-500 outline-none" />
+        </div>
+        <button onClick={loadCompteurs} className="p-2 text-slate-400 hover:text-white transition-colors">
+          <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+        </button>
+      </div>
+
+      {/* Compact List */}
+      <div className="space-y-1">
+        <div className="grid grid-cols-12 gap-4 px-4 py-2 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+          <div className="col-span-3">N° Série</div>
+          <div className="col-span-4 pl-4">Localisation</div>
+          <div className="col-span-3 pl-4">Titulaire</div>
+          <div className="col-span-2 text-right">Dernier Index</div>
+        </div>
+
+        {loading ? (
+          <div className="space-y-2 animate-pulse">
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-14 bg-slate-800/30 rounded-lg border border-white/5" />)}
+          </div>
+        ) : (
+          <div className="min-h-[300px]">
+            {paginatedData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 text-slate-500 text-sm">Aucun compteur trouvé</div>
+            ) : (
+              paginatedData.map((c, i) => <CompteurRow key={c.numero_serie} c={c} index={i} />)
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between text-xs text-slate-500 pt-4 border-t border-white/5">
+        <span>Page {page} sur {totalPages || 1}</span>
+        <div className="flex gap-2">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded-lg hover:bg-white/5 disabled:opacity-30"><ChevronLeft size={16} /></button>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="p-1.5 rounded-lg hover:bg-white/5 disabled:opacity-30"><ChevronRight size={16} /></button>
         </div>
       </div>
-      {error && (
-        <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm">
-          {success}
-        </div>
-      )}
-      {loading ? (
-        <p className="text-sm text-slate-400">Chargement des compteurs...</p>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span>
-              {compteurs.length === 0
-                ? 'Aucun compteur à afficher.'
-                : `Affichage de ${(page - 1) * pageSize + 1} à ${Math.min(
-                    page * pageSize,
-                    compteurs.length
-                  )} sur ${compteurs.length} compteurs`}
-            </span>
-            <div className="flex items-center gap-2">
-              <span>Par page</span>
-              <select
-                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100"
-                value={pageSize}
-                onChange={(e) => handleChangePageSize(e.target.value)}
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-            </div>
-          </div>
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/40">
-            <table className="min-w-full text-xs">
-              <thead className="bg-slate-900/70 border-b border-slate-800">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">N° série</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Type</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Adresse</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Quartier</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Client</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Index actuel</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentPageItems.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-4 py-6 text-center text-xs text-slate-500"
-                    >
-                      Aucun compteur.
-                    </td>
-                  </tr>
-                )}
-                {currentPageItems.map((c) => (
-                  <tr key={c.numero_serie} className="border-t border-slate-800/60 hover:bg-slate-900/40">
-                    <td className="px-4 py-2 text-slate-100">{c.numero_serie}</td>
-                    <td className="px-4 py-2 text-slate-300">{c.type}</td>
-                    <td className="px-4 py-2 text-slate-300">
-                      {c.adresse?.libelle_complet || '-'}
-                    </td>
-                    <td className="px-4 py-2 text-slate-300">
-                      {c.adresse?.quartier?.libelle || '-'}
-                    </td>
-                    <td className="px-4 py-2 text-slate-300">
-                      {c.client ? c.client.nom_complet : '-'}
-                    </td>
-                    <td className="px-4 py-2 text-slate-300">{c.index_actuel}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {compteurs.length > 0 && (
-            <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
-              <span>
-                Page {page} sur {totalPages}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={page === 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="px-2 py-1 rounded border border-slate-700 disabled:opacity-40 hover:bg-slate-800"
-                >
-                  Précédent
-                </button>
-                <button
-                  type="button"
-                  disabled={page === totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="px-2 py-1 rounded border border-slate-700 disabled:opacity-40 hover:bg-slate-800"
-                >
-                  Suivant
-                </button>
+
+      {/* Create Modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowCreateModal(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-lg bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl overflow-hidden">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-bold text-white">Nouveau Compteur</h3>
+                <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-white"><X size={20} /></button>
               </div>
-            </div>
-          )}
-        </div>
-      )}
 
-      {showCreateModal && (() => {
-        // Filtrer les adresses selon le quartier et la recherche
-        const filteredAdresses = adressesSansCompteur.filter((a) => {
-          const matchQuartier = !filterQuartier || a.quartier?.id_quartier === Number(filterQuartier);
-          const matchSearch = !searchAdresse || a.libelle_complet.toLowerCase().includes(searchAdresse.toLowerCase());
-          return matchQuartier && matchSearch;
-        });
-
-        return (
-          <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/50">
-            <div className="w-full max-w-lg bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-              <h3 className="text-lg font-semibold text-slate-100 mb-2">Créer un compteur</h3>
-              <p className="text-xs text-slate-500 mb-4">
-                Sélectionnez une adresse qui ne possède pas encore de compteur. Le numéro de série sera généré automatiquement si non fourni (9 chiffres).
-              </p>
-              <form onSubmit={handleCreateCompteur} className="space-y-3">
-                {/* Filtres pour la sélection d'adresse */}
-                <div className="bg-slate-900/50 rounded-lg p-3 space-y-2 border border-slate-800">
+              <form onSubmit={handleCreateCompteur} className="space-y-4">
+                <div className="bg-slate-800/50 p-4 rounded-xl border border-white/5 space-y-3">
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1" htmlFor="filter-quartier">
-                      Filtrer par quartier
-                    </label>
+                    <label className="text-xs text-slate-400 uppercase font-bold mb-1 block">Type</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['EAU', 'ELECTRICITE'].map(type => (
+                        <button
+                          key={type} type="button"
+                          onClick={() => setCreateForm({ ...createForm, type })}
+                          className={`py-2 px-3 rounded-lg text-xs font-bold border transition-all ${createForm.type === type
+                            ? (type === 'EAU' ? 'bg-water-500/20 text-water-400 border-water-500/50' : 'bg-elec-500/20 text-elec-400 border-elec-500/50')
+                            : 'border-white/5 text-slate-500 hover:bg-white/5'
+                            }`}
+                        >{type}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 uppercase font-bold mb-1 block">N° Série (Auto si vide)</label>
+                    <input
+                      maxLength={9}
+                      value={createForm.numero_serie}
+                      onChange={e => setCreateForm({ ...createForm, numero_serie: e.target.value })}
+                      placeholder="000000001"
+                      className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-accent-500 outline-none font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-slate-400 uppercase font-bold mb-1 block">Adresse (Sans compteur)</label>
                     <select
-                      id="filter-quartier"
-                      value={filterQuartier}
-                      onChange={(e) => setFilterQuartier(e.target.value)}
-                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      value={createForm.id_adresse}
+                      onChange={e => setCreateForm({ ...createForm, id_adresse: e.target.value })}
+                      className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-accent-500 outline-none"
                     >
-                      <option value="">Tous les quartiers</option>
-                      {quartiers.map((q) => (
-                        <option key={q.id_quartier} value={q.id_quartier}>
-                          {q.libelle}
-                        </option>
+                      <option value="">Choisir une adresse...</option>
+                      {adressesSansCompteur.map(a => (
+                        <option key={a.id_adresse} value={a.id_adresse}>{a.libelle_complet} ({a.quartier?.libelle})</option>
                       ))}
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-slate-400 mb-1" htmlFor="search-adresse">
-                      Rechercher une adresse
-                    </label>
-                    <input
-                      id="search-adresse"
-                      type="text"
-                      value={searchAdresse}
-                      onChange={(e) => setSearchAdresse(e.target.value)}
-                      placeholder="Rechercher..."
-                      className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    />
+                    <label className="text-xs text-slate-400 uppercase font-bold mb-1 block">Client Titulaire</label>
+                    <select
+                      value={createForm.id_client}
+                      onChange={e => setCreateForm({ ...createForm, id_client: e.target.value })}
+                      className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-accent-500 outline-none"
+                    >
+                      <option value="">Choisir un client...</option>
+                      {clients.map(c => (
+                        <option key={c.id_client} value={c.id_client}>{c.nom_complet}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1" htmlFor="numero_serie">
-                    Numéro de série (optionnel, 9 chiffres)
-                  </label>
-                  <input
-                    id="numero_serie"
-                    name="numero_serie"
-                    type="text"
-                    maxLength={9}
-                    value={createForm.numero_serie}
-                    onChange={handleCreateInputChange}
-                    placeholder="000000001"
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1" htmlFor="type">
-                    Type
-                  </label>
-                  <select
-                    id="type"
-                    name="type"
-                    required
-                    value={createForm.type}
-                    onChange={handleCreateInputChange}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="EAU">EAU</option>
-                    <option value="ELECTRICITE">ELECTRICITE</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-slate-400 mb-1" htmlFor="id_adresse">
-                    Adresse * ({filteredAdresses.length} disponible{filteredAdresses.length > 1 ? 's' : ''})
-                  </label>
-                  <select
-                    id="id_adresse"
-                    name="id_adresse"
-                    required
-                    value={createForm.id_adresse}
-                    onChange={handleCreateInputChange}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">Sélectionner une adresse</option>
-                    {filteredAdresses.map((a) => (
-                      <option key={a.id_adresse} value={a.id_adresse}>
-                        {a.libelle_complet} {a.quartier ? `(${a.quartier.libelle})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  {filteredAdresses.length === 0 && (
-                    <p className="text-xs text-amber-400 mt-1">
-                      Aucune adresse disponible avec ces critères.
-                    </p>
-                  )}
-                </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1" htmlFor="id_client">
-                  Client *
-                </label>
-                <select
-                  id="id_client"
-                  name="id_client"
-                  required
-                  value={createForm.id_client}
-                  onChange={handleCreateInputChange}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  disabled={clients.length === 0}
-                >
-                  <option value="">
-                    {clients.length === 0 ? 'Aucun client disponible' : 'Sélectionner un client'}
-                  </option>
-                  {clients.map((c) => (
-                    <option key={c.id_client} value={c.id_client}>
-                      {c.nom_complet}
-                    </option>
-                  ))}
-                </select>
-                {clients.length === 0 && (
-                  <p className="text-xs text-rose-400 mt-1">
-                    Aucun client trouvé. Veuillez d&apos;abord importer des clients via l&apos;intégration ERP.
-                  </p>
-                )}
-              </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCreateModal(false);
-                      setCreateForm({ numero_serie: '', type: 'EAU', id_adresse: '', id_client: '' });
-                      setFilterQuartier('');
-                      setSearchAdresse('');
-                    }}
-                    className="px-3 py-2 text-xs rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting || filteredAdresses.length === 0}
-                    className="px-3 py-2 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium disabled:opacity-60"
-                  >
-                    {submitting ? 'Création...' : 'Créer'}
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-white/5">
+                  <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 text-slate-400 hover:text-white text-sm">Annuler</button>
+                  <button type="submit" disabled={submitting} className="px-6 py-2 bg-accent-600 hover:bg-accent-500 text-white rounded-xl font-medium shadow-lg shadow-accent-500/20 text-sm">
+                    {submitting ? '...' : 'Créer'}
                   </button>
                 </div>
               </form>
-            </div>
+            </motion.div>
           </div>
-        );
-      })()}
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 export default DashboardCompteurs;
-
-

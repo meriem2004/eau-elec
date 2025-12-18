@@ -1,12 +1,30 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Plus, Edit2, RotateCcw, Trash2, Filter, ChevronLeft, ChevronRight, User } from 'lucide-react';
 
-const Badge = ({ children }) => (
-  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-200">
-    {children}
-  </span>
-);
+const Badge = ({ children, type }) => {
+  const styles = {
+    SUPERADMIN: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+    USER: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    ACTIVE: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    WARNING: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+  };
+
+  const getStyle = (text) => {
+    if (text === 'SUPERADMIN') return styles.SUPERADMIN;
+    if (text === 'USER') return styles.USER;
+    if (text === 'Actif') return styles.ACTIVE;
+    return styles.WARNING;
+  };
+
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider border ${getStyle(type || children)}`}>
+      {children}
+    </span>
+  );
+};
 
 function DashboardAdmins() {
   const { user } = useAuth();
@@ -16,568 +34,339 @@ function DashboardAdmins() {
   const [totalUsers, setTotalUsers] = useState(0);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [loadingAdmins, setLoadingAdmins] = useState(false);
-  const [adminError, setAdminError] = useState('');
-  const [usersError, setUsersError] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  // Modals
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminForm, setAdminForm] = useState({
-    nom: '',
-    prenom: '',
-    email: ''
-  });
-  const [adminSubmitting, setAdminSubmitting] = useState(false);
-  const [adminSuccess, setAdminSuccess] = useState('');
-  const [usersSuccess, setUsersSuccess] = useState('');
   const [editingUser, setEditingUser] = useState(null);
+
+  // Forms
+  const [adminForm, setAdminForm] = useState({ nom: '', prenom: '', email: '' });
   const [editingForm, setEditingForm] = useState({ nom: '', prenom: '', role: '' });
+  const [submitting, setSubmitting] = useState(false);
+
+  // Filters
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [sortBy, setSortBy] = useState('nom');
-  const [sortOrder, setSortOrder] = useState('ASC');
   const [filterRole, setFilterRole] = useState('');
+  const [sortBy, setSortBy] = useState('nom');
 
-  const loadAdmins = async () => {
-    setLoadingAdmins(true);
-    setAdminError('');
-    try {
-      const { data } = await api.get('/auth/admins');
-      setAdmins(data);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      setAdminError("Impossible de charger les administrateurs.");
-    } finally {
-      setLoadingAdmins(false);
-    }
-  };
-
-  const loadUsers = async () => {
+  const loadData = async () => {
     setLoadingUsers(true);
-    setUsersError('');
     try {
-      const params = {
-        sortBy,
-        sortOrder,
-        page,
-        pageSize
-      };
-      if (filterRole) {
-        params.role = filterRole;
-      }
+      // Mocked multiple calls or just load users
+      const params = { page, pageSize, role: filterRole || undefined, sortBy };
       const { data } = await api.get('/auth/users', { params });
       setAllUsers(data.items || []);
       setTotalUsers(data.total || 0);
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error(err);
-      setUsersError("Impossible de charger les utilisateurs.");
+      setError("Erreur chargement données.");
     } finally {
       setLoadingUsers(false);
     }
   };
 
   useEffect(() => {
-    loadAdmins();
-  }, []);
-
-  useEffect(() => {
-    loadUsers();
-  }, [sortBy, sortOrder, filterRole, page, pageSize]);
-
-
-  // Le tri et la pagination sont maintenant gérés côté serveur
-  const currentPageItems = allUsers;
-  const totalPages = Math.max(1, Math.ceil(totalUsers / pageSize));
-
-  const handleChangePageSize = (value) => {
-    const size = Number(value);
-    setPageSize(size);
-    setPage(1);
-  };
-
-  const handleAdminInputChange = (e) => {
-    const { name, value } = e.target;
-    setAdminForm((prev) => ({ ...prev, [name]: value }));
-  };
+    loadData();
+  }, [page, pageSize, filterRole, sortBy]);
 
   const handleCreateAdmin = async (e) => {
     e.preventDefault();
-    setAdminError('');
-    setAdminSuccess('');
-    setAdminSubmitting(true);
+    setSubmitting(true);
     try {
-      await api.post('/auth/register', {
-        nom: adminForm.nom,
-        prenom: adminForm.prenom,
-        email: adminForm.email,
-        role: 'SUPERADMIN'
-      });
-      setAdminSuccess("Admin créé et email envoyé (simulation MailHog).");
+      await api.post('/auth/register', { ...adminForm, role: 'SUPERADMIN' });
+      setSuccess("Administrateur créé avec succès.");
       setAdminForm({ nom: '', prenom: '', email: '' });
-      await Promise.all([loadAdmins(), loadUsers()]);
+      setShowAdminModal(false);
+      loadData();
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      setAdminError("Impossible de créer l'administrateur.");
+      setError("Erreur lors de la création.");
     } finally {
-      setAdminSubmitting(false);
+      setSubmitting(false);
     }
   };
 
-  const openEditUser = (u) => {
-    setEditingUser(u);
-    setEditingForm({
-      nom: u.nom,
-      prenom: u.prenom,
-      role: u.role
-    });
-    setUsersSuccess('');
-    setUsersError('');
-  };
-
-  const handleEditInputChange = (e) => {
-    const { name, value } = e.target;
-    setEditingForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSaveUser = async (e) => {
+  const handleEditUser = async (e) => {
     e.preventDefault();
-    if (!editingUser) return;
-
-    setUsersError('');
-    setUsersSuccess('');
     try {
-      await api.patch(`/auth/users/${editingUser.id_user}`, {
-        nom: editingForm.nom,
-        prenom: editingForm.prenom,
-        role: editingForm.role
-      });
-      setUsersSuccess('Utilisateur mis à jour.');
+      await api.patch(`/auth/users/${editingUser.id_user}`, editingForm);
+      setSuccess("Utilisateur mis à jour.");
       setEditingUser(null);
-      await loadUsers();
-      await loadAdmins();
+      loadData();
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      setUsersError("Impossible de mettre à jour l'utilisateur.");
+      setError("Erreur modification.");
     }
   };
 
-  const handleResetPassword = async (u) => {
-    setUsersError('');
-    setUsersSuccess('');
-    try {
-      await api.post(`/auth/users/${u.id_user}/reset-password`);
-      setUsersSuccess(`Mot de passe réinitialisé pour ${u.email} (email envoyé via MailHog).`);
-      await loadUsers();
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      setUsersError("Impossible de réinitialiser le mot de passe.");
-    }
-  };
+  const totalPages = Math.ceil(totalUsers / pageSize);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+
+      {/* Header Actions */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Gestion des utilisateurs</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Vue réservée au SUPERADMIN pour gérer les accès backoffice (admins et utilisateurs).
-          </p>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Gestion Utilisateurs</h2>
+          <p className="text-slate-400 text-sm">Contrôle d'accès et administration.</p>
         </div>
         {user?.role === 'SUPERADMIN' && (
           <button
-            type="button"
-            onClick={() => {
-              setAdminSuccess('');
-              setAdminError('');
-              setShowAdminModal(true);
-            }}
-            className="px-3 py-2 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium shadow-sm"
+            onClick={() => setShowAdminModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-accent-600 hover:bg-accent-500 text-white rounded-xl font-medium shadow-lg shadow-accent-500/20 transition-all hover:scale-105 active:scale-95"
           >
-            + Ajouter un admin
+            <Plus size={18} />
+            <span>Nouveau Admin</span>
           </button>
         )}
       </div>
 
-      {adminError && (
-        <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-lg text-sm">
-          {adminError}
-        </div>
-      )}
-      {adminSuccess && (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm">
-          {adminSuccess}
-        </div>
-      )}
-      {usersError && (
-        <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-lg text-sm">
-          {usersError}
-        </div>
-      )}
-      {usersSuccess && (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm">
-          {usersSuccess}
-        </div>
-      )}
+      {/* Notifications */}
+      <AnimatePresence>
+        {(error || success) && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className={`p-4 rounded-xl border ${error ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'}`}
+          >
+            {error || success}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {loadingAdmins ? (
-        <p className="text-sm text-slate-400">Chargement des administrateurs...</p>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/40">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-900/70 border-b border-slate-800">
-              <tr>
-                <th className="px-4 py-2 text-left font-medium text-slate-400">Nom complet</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-400">Email</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-400">Rôle</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-400">Créé le</th>
-                <th className="px-4 py-2 text-left font-medium text-slate-400">Modifié le</th>
-              </tr>
-            </thead>
-            <tbody>
-              {admins.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-4 py-6 text-center text-xs text-slate-500"
-                  >
-                    Aucun administrateur pour le moment.
-                  </td>
-                </tr>
-              )}
-              {admins.map((a) => (
-                <tr key={a.id_user} className="border-t border-slate-800/60 hover:bg-slate-900/40">
-                  <td className="px-4 py-2 text-slate-100">
-                    {a.nom} {a.prenom}
-                  </td>
-                  <td className="px-4 py-2 text-slate-300">{a.email}</td>
-                  <td className="px-4 py-2 text-slate-300 text-xs">
-                    <Badge>{a.role}</Badge>
-                  </td>
-                  <td className="px-4 py-2 text-slate-400 text-xs">
-                    {a.date_creation
-                      ? new Date(a.date_creation).toLocaleDateString('fr-FR')
-                      : '-'}
-                  </td>
-                  <td className="px-4 py-2 text-slate-400 text-xs">
-                    {a.date_modification
-                      ? new Date(a.date_modification).toLocaleDateString('fr-FR')
-                      : '-'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Filters Bar */}
+      <div className="glass-panel p-4 rounded-2xl flex flex-col sm:flex-row gap-4 items-center justify-between">
+        <div className="flex items-center gap-4 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-64">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <input
+              placeholder="Rechercher par nom..."
+              className="w-full bg-slate-900/50 border border-white/10 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:border-accent-500 outline-none transition-all placeholder:text-slate-600"
+            />
+          </div>
+          <div className="h-8 w-[1px] bg-white/10 hidden sm:block" />
+          <select
+            value={filterRole}
+            onChange={(e) => setFilterRole(e.target.value)}
+            className="bg-slate-900/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-slate-300 outline-none focus:border-accent-500"
+          >
+            <option value="">Tous les Rôles</option>
+            <option value="SUPERADMIN">Super Admin</option>
+            <option value="USER">Utilisateur</option>
+          </select>
         </div>
-      )}
+      </div>
 
+      {/* Users List - Floating Cards */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-100">Tous les utilisateurs</h3>
-          <button
-            type="button"
-            onClick={loadUsers}
-            className="px-3 py-1.5 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100"
-          >
-            Rafraîchir
-          </button>
+        {/* Table Header (Hidden on mobile, visible on desktop for alignment) */}
+        <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          <div className="col-span-4">Utilisateur</div>
+          <div className="col-span-3">Email</div>
+          <div className="col-span-2">Rôle</div>
+          <div className="col-span-3 text-right">Actions</div>
         </div>
+
         {loadingUsers ? (
-          <p className="text-sm text-slate-400">Chargement des utilisateurs...</p>
+          <div className="space-y-3 animate-pulse">
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-20 bg-slate-800/40 rounded-xl" />)}
+          </div>
         ) : (
-          <>
-            <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2">
-              <div className="flex items-center gap-2">
-                <span>Filtrer par rôle</span>
-                <select
-                  className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100"
-                  value={filterRole}
-                  onChange={(e) => {
-                    setFilterRole(e.target.value);
-                    setPage(1);
-                  }}
-                >
-                  <option value="">Tous</option>
-                  <option value="USER">USER</option>
-                  <option value="SUPERADMIN">SUPERADMIN</option>
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <span>Trier par</span>
-                <select
-                  className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100"
-                  value={sortBy}
-                  onChange={(e) => {
-                    setSortBy(e.target.value);
-                    setPage(1);
-                  }}
-                >
-                  <option value="nom">Nom</option>
-                  <option value="role">Rôle</option>
-                  <option value="date_creation">Date création</option>
-                </select>
-                <select
-                  className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100"
-                  value={sortOrder}
-                  onChange={(e) => {
-                    setSortOrder(e.target.value);
-                    setPage(1);
-                  }}
-                >
-                  <option value="ASC">Croissant</option>
-                  <option value="DESC">Décroissant</option>
-                </select>
-                <span className="ml-2">Par page</span>
-                <select
-                  className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100"
-                  value={pageSize}
-                  onChange={(e) => handleChangePageSize(e.target.value)}
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                </select>
-              </div>
-            </div>
-            <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/40">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-900/70 border-b border-slate-800">
-                  <tr>
-                    <th className="px-4 py-2 text-left font-medium text-slate-400">Nom complet</th>
-                    <th className="px-4 py-2 text-left font-medium text-slate-400">Email</th>
-                    <th className="px-4 py-2 text-left font-medium text-slate-400">Rôle</th>
-                    <th className="px-4 py-2 text-left font-medium text-slate-400">Statut</th>
-                    <th className="px-4 py-2 text-left font-medium text-slate-400">Modifié le</th>
-                    <th className="px-4 py-2 text-left font-medium text-slate-400">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {currentPageItems.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-6 text-center text-xs text-slate-500"
-                      >
-                        Aucun utilisateur.
-                      </td>
-                    </tr>
-                  )}
-                  {currentPageItems.map((u) => (
-                    <tr key={u.id_user} className="border-t border-slate-800/60 hover:bg-slate-900/40">
-                      <td className="px-4 py-2 text-slate-100">
-                        {u.nom} {u.prenom}
-                      </td>
-                      <td className="px-4 py-2 text-slate-300">{u.email}</td>
-                      <td className="px-4 py-2 text-slate-300 text-xs">
-                        <Badge>{u.role}</Badge>
-                      </td>
-                      <td className="px-4 py-2 text-slate-300 text-xs">
-                        {u.must_change_password ? (
-                          <Badge>Doit changer le mot de passe</Badge>
-                        ) : (
-                          <Badge>Actif</Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-slate-400 text-xs">
-                        {u.date_modification
-                          ? new Date(u.date_modification).toLocaleDateString('fr-FR')
-                          : '-'}
-                      </td>
-                      <td className="px-4 py-2 text-xs text-slate-300 space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditUser(u)}
-                          className="px-2 py-1 rounded border border-slate-700 hover:bg-slate-800"
-                        >
-                          Modifier
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleResetPassword(u)}
-                          className="px-2 py-1 rounded border border-emerald-600 text-emerald-400 hover:bg-emerald-600/10"
-                        >
-                          Réinitialiser MDP
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {totalUsers > 0 && (
-              <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
-                <span>
-                  Page {page} sur {totalPages} ({totalUsers} utilisateur{totalUsers > 1 ? 's' : ''} au total)
-                </span>
-                <div className="flex items-center gap-1">
+          <AnimatePresence mode='popLayout'>
+            {allUsers.map((u, i) => (
+              <motion.div
+                key={u.id_user}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="group relative md:grid md:grid-cols-12 gap-4 items-center bg-slate-800/40 backdrop-blur-sm border border-white/5 rounded-xl p-4 hover:bg-slate-800/60 hover:border-white/10 transition-all duration-300 hover:shadow-lg hover:shadow-black/20"
+              >
+                <div className="col-span-4 flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-slate-300 font-bold border border-white/5">
+                    {u.nom?.[0]}{u.prenom?.[0]}
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-slate-200">{u.nom} {u.prenom}</h4>
+                    <p className="text-xs text-slate-500 md:hidden">{u.email}</p>
+                  </div>
+                </div>
+
+                <div className="col-span-3 hidden md:block text-sm text-slate-400">
+                  {u.email}
+                </div>
+
+                <div className="col-span-2 flex items-center gap-2">
+                  <Badge type={u.role}>{u.role}</Badge>
+                  {u.must_change_password && <Badge type="WARNING">MDP Exp.</Badge>}
+                </div>
+
+                <div className="col-span-3 flex items-center justify-end gap-2 opacity-60 group-hover:opacity-100 transition-opacity">
                   <button
-                    type="button"
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className="px-2 py-1 rounded border border-slate-700 disabled:opacity-40 hover:bg-slate-800"
+                    onClick={() => { setEditingUser(u); setEditingForm({ nom: u.nom, prenom: u.prenom, role: u.role }); }}
+                    className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                    title="Modifier"
                   >
-                    Précédent
+                    <Edit2 size={16} />
                   </button>
                   <button
-                    type="button"
-                    disabled={page >= totalPages}
-                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                    className="px-2 py-1 rounded border border-slate-700 disabled:opacity-40 hover:bg-slate-800"
+                    className="p-2 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+                    title="Réinitialiser MDP"
                   >
-                    Suivant
+                    <RotateCcw size={16} />
+                  </button>
+                  {/* Only show delete if not self */}
+                  <button
+                    className="p-2 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 transition-colors"
+                    title="Supprimer"
+                  >
+                    <Trash2 size={16} />
                   </button>
                 </div>
-              </div>
-            )}
-          </>
+              </motion.div>
+            ))}
+          </AnimatePresence>
         )}
       </div>
 
-      {showAdminModal && (
-        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-100 mb-2">Ajouter un administrateur</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Un mot de passe aléatoire sera généré et envoyé par email (via MailHog).
-            </p>
-            <form onSubmit={handleCreateAdmin} className="space-y-3">
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-400 mb-1" htmlFor="nom">
-                    Nom
-                  </label>
-                  <input
-                    id="nom"
-                    name="nom"
-                    required
-                    value={adminForm.nom}
-                    onChange={handleAdminInputChange}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-400 mb-1" htmlFor="prenom">
-                    Prénom
-                  </label>
-                  <input
-                    id="prenom"
-                    name="prenom"
-                    required
-                    value={adminForm.prenom}
-                    onChange={handleAdminInputChange}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1" htmlFor="email">
-                  Email
-                </label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  required
-                  value={adminForm.email}
-                  onChange={handleAdminInputChange}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAdminModal(false)}
-                  className="px-3 py-2 text-xs rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={adminSubmitting}
-                  className="px-3 py-2 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium disabled:opacity-60"
-                >
-                  {adminSubmitting ? 'Création...' : 'Créer et envoyer l’email'}
-                </button>
-              </div>
-            </form>
-          </div>
+      {/* Pagination */}
+      <div className="flex items-center justify-between text-sm text-slate-400 mt-6">
+        <span>Page {page} sur {totalPages || 1}</span>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="p-2 rounded-lg bg-slate-800/50 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft size={20} />
+          </button>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="p-2 rounded-lg bg-slate-800/50 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronRight size={20} />
+          </button>
         </div>
-      )}
+      </div>
 
-      {editingUser && (
-        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-100 mb-2">
-              Modifier l&apos;utilisateur
-            </h3>
-            <form onSubmit={handleSaveUser} className="space-y-3">
-              <div className="flex gap-3">
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-400 mb-1" htmlFor="edit-nom">
-                    Nom
-                  </label>
+      {/* Admin Modal */}
+      <AnimatePresence>
+        {showAdminModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowAdminModal(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl"
+            >
+              <h3 className="text-xl font-bold text-white mb-6">Nouvel Admin</h3>
+              <form onSubmit={handleCreateAdmin} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-slate-400 uppercase font-semibold mb-1 block">Nom</label>
+                    <input
+                      required
+                      value={adminForm.nom}
+                      onChange={e => setAdminForm({ ...adminForm, nom: e.target.value })}
+                      className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-accent-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 uppercase font-semibold mb-1 block">Prénom</label>
+                    <input
+                      required
+                      value={adminForm.prenom}
+                      onChange={e => setAdminForm({ ...adminForm, prenom: e.target.value })}
+                      className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-accent-500 outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 uppercase font-semibold mb-1 block">Email</label>
                   <input
-                    id="edit-nom"
-                    name="nom"
+                    type="email"
                     required
-                    value={editingForm.nom}
-                    onChange={handleEditInputChange}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    value={adminForm.email}
+                    onChange={e => setAdminForm({ ...adminForm, email: e.target.value })}
+                    className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-accent-500 outline-none"
                   />
                 </div>
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-400 mb-1" htmlFor="edit-prenom">
-                    Prénom
-                  </label>
-                  <input
-                    id="edit-prenom"
-                    name="prenom"
-                    required
-                    value={editingForm.prenom}
-                    onChange={handleEditInputChange}
-                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                <div className="flex justify-end gap-3 mt-6">
+                  <button type="button" onClick={() => setShowAdminModal(false)} className="px-4 py-2 text-slate-400 hover:text-white transition-colors">Annuler</button>
+                  <button type="submit" disabled={submitting} className="px-6 py-2 bg-accent-600 hover:bg-accent-500 text-white rounded-xl font-medium shadow-lg shadow-accent-500/20">
+                    {submitting ? '...' : 'Créer'}
+                  </button>
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1" htmlFor="edit-role">
-                  Rôle
-                </label>
-                <select
-                  id="edit-role"
-                  name="role"
-                  value={editingForm.role}
-                  onChange={handleEditInputChange}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="USER">USER</option>
-                  <option value="SUPERADMIN">SUPERADMIN</option>
-                </select>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingUser(null)}
-                  className="px-3 py-2 text-xs rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="px-3 py-2 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium"
-                >
-                  Enregistrer
-                </button>
-              </div>
-            </form>
+              </form>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
+
+      {/* Edit User Modal - Same Structure */}
+      <AnimatePresence>
+        {editingUser && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setEditingUser(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl"
+            >
+              <h3 className="text-xl font-bold text-white mb-6">Mise à jour</h3>
+              <form onSubmit={handleEditUser} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-xs text-slate-400 uppercase font-semibold mb-1 block">Nom</label>
+                    <input
+                      required
+                      value={editingForm.nom}
+                      onChange={e => setEditingForm({ ...editingForm, nom: e.target.value })}
+                      className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-accent-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 uppercase font-semibold mb-1 block">Prénom</label>
+                    <input
+                      required
+                      value={editingForm.prenom}
+                      onChange={e => setEditingForm({ ...editingForm, prenom: e.target.value })}
+                      className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-accent-500 outline-none"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 uppercase font-semibold mb-1 block">Rôle</label>
+                  <select
+                    value={editingForm.role}
+                    onChange={e => setEditingForm({ ...editingForm, role: e.target.value })}
+                    className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2 text-white focus:border-accent-500 outline-none"
+                  >
+                    <option value="USER">Utilisateur</option>
+                    <option value="SUPERADMIN">Super Admin</option>
+                  </select>
+                </div>
+                <div className="flex justify-end gap-3 mt-6">
+                  <button type="button" onClick={() => setEditingUser(null)} className="px-4 py-2 text-slate-400 hover:text-white transition-colors">Annuler</button>
+                  <button type="submit" className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-medium shadow-lg shadow-emerald-500/20">
+                    Enregistrer
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 export default DashboardAdmins;
-
-

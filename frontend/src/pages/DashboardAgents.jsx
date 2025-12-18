@@ -1,251 +1,158 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { RefreshCw, User, MapPin, Briefcase, Play, ChevronLeft, ChevronRight } from 'lucide-react';
+
+const AgentRow = ({ a, index, quartiers, onAssign }) => {
+  const statusColor = a.agents_actuels < a.agents_recommandes
+    ? 'border-l-amber-500 hover:border-amber-500/30'
+    : a.agents_actuels === a.agents_recommandes ? 'border-l-emerald-500 hover:border-emerald-500/30' : 'border-l-blue-500 hover:border-blue-500/30';
+
+  const statusText = a.agents_actuels < a.agents_recommandes
+    ? 'text-amber-500'
+    : a.agents_actuels === a.agents_recommandes ? 'text-emerald-500' : 'text-blue-500';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.03 }}
+      className={`group relative grid grid-cols-12 gap-4 items-center p-3 my-1 rounded-lg border border-white/5 hover:bg-white/5 transition-all cursor-pointer border-l-[3px] bg-slate-800/40 backdrop-blur-sm shadow-sm ${statusColor}`}
+    >
+      {/* Agent Info */}
+      <div className="col-span-3 flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300 border border-white/10 shrink-0">
+          {a.nom[0]}{a.prenom[0]}
+        </div>
+        <div className="min-w-0">
+          <span className="block text-sm font-bold text-slate-200 truncate">{a.nom} {a.prenom}</span>
+          <span className="text-[10px] text-slate-500 font-mono tracking-wider">{a.matricule_rh}</span>
+        </div>
+      </div>
+
+      {/* Assignment Dropdown */}
+      <div className="col-span-3 pl-2">
+        <div className="flex items-center gap-2 bg-slate-900/40 px-2 py-1.5 rounded-lg border border-white/5">
+          <MapPin size={12} className="text-slate-500" />
+          <select
+            value={a.quartier?.id_quartier || ''}
+            onChange={(e) => onAssign(a.id_agent, Number(e.target.value))}
+            className="bg-transparent text-xs text-slate-300 outline-none w-full cursor-pointer hover:text-white transition-colors"
+          >
+            <option value="" className="bg-slate-900 text-slate-500">Non affecté</option>
+            {quartiers.map(q => (
+              <option key={q.id_quartier} value={q.id_quartier} className="bg-slate-900 text-slate-200">{q.libelle}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Charge / Workload */}
+      <div className="col-span-3 pl-4 border-l border-white/5">
+        <div className="flex flex-col">
+          <span className="text-[10px] text-slate-500 uppercase font-semibold">Portefeuille</span>
+          <span className="text-sm text-white font-bold">{a.charge_estimee} <span className="text-[10px] font-normal text-slate-500">adresses</span></span>
+        </div>
+      </div>
+
+      {/* Reco / Status */}
+      <div className="col-span-3 pl-4 border-l border-white/5">
+        {a.quartier && a.charge_estimee > 0 ? (
+          <div className="flex flex-col">
+            <span className={`text-[10px] font-bold uppercase ${statusText}`}>
+              {a.agents_actuels < a.agents_recommandes ? `⚠️ Manque ${a.agents_recommandes - a.agents_actuels} Agents` :
+                a.agents_actuels === a.agents_recommandes ? '✓ Optimal' : 'ℹ Bien réparti'}
+            </span>
+            <span className="text-[10px] text-slate-500">
+              Zone: {a.agents_actuels}/{a.agents_recommandes} Staffés
+            </span>
+          </div>
+        ) : <span className="text-slate-600 text-[10px] italic">Pas de données</span>}
+      </div>
+
+    </motion.div>
+  );
+};
 
 function DashboardAgents() {
   const [agents, setAgents] = useState([]);
   const [quartiers, setQuartiers] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-  const [updatingId, setUpdatingId] = useState(null);
+
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize] = useState(15);
 
   const loadAgents = async () => {
     setLoading(true);
-    setError('');
     try {
       const { data } = await api.get('/agents');
       setAgents(data);
       const uniqueQuartiers = [];
       const seen = new Set();
-      data.forEach((a) => {
+      data.forEach(a => {
         if (a.quartier && !seen.has(a.quartier.id_quartier)) {
           seen.add(a.quartier.id_quartier);
           uniqueQuartiers.push(a.quartier);
         }
       });
       setQuartiers(uniqueQuartiers);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      setError("Impossible de charger les agents.");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    loadAgents();
-  }, []);
+  useEffect(() => { loadAgents(); }, []);
 
-  const totalPages = Math.max(1, Math.ceil(agents.length / pageSize));
-
-  const currentPageItems = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return agents.slice(start, start + pageSize);
-  }, [agents, page, pageSize]);
-
-  const handleChangePageSize = (value) => {
-    const size = Number(value);
-    setPageSize(size);
-    setPage(1);
-  };
-
-  const handleChangeQuartier = async (idAgent, id_quartier) => {
-    setError('');
-    setSuccess('');
-    setUpdatingId(idAgent);
+  const handleAssign = async (idAgent, idQuartier) => {
     try {
-      const response = await api.patch(`/agents/${idAgent}/affectation`, { id_quartier });
-      const data = response.data;
-      
-      // Afficher le message de succès avec recommandation si présente
-      let message = data.message || 'Affectation mise à jour.';
-      if (data.recommandation) {
-        message += ` ${data.recommandation.message}`;
-      }
-      
-      setSuccess(message);
-      await loadAgents();
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      setError(err.response?.data?.message || "Impossible de mettre à jour l'affectation.");
-    } finally {
-      setUpdatingId(null);
-    }
+      await api.patch(`/agents/${idAgent}/affectation`, { id_quartier: idQuartier });
+      loadAgents(); // Reload to update calculs
+    } catch (e) { console.error(e); }
   };
+
+  const paginatedData = agents.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.ceil(agents.length / pageSize);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Affectation des agents</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Visualisez les agents de terrain et ajustez leur affectation par quartier.
-          </p>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Agents de Terrain</h2>
+          <p className="text-slate-400 text-sm">Répartition et optimisation de la force de travail.</p>
         </div>
-        <button
-          type="button"
-          onClick={loadAgents}
-          className="px-3 py-1.5 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100"
-        >
-          Rafraîchir
+        <button onClick={loadAgents} className="p-2 text-slate-400 hover:text-white transition-colors bg-white/5 rounded-lg hover:bg-white/10">
+          <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
         </button>
       </div>
-      {error && (
-        <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-lg text-sm">
-          {error}
+
+      <div className="space-y-1">
+        <div className="grid grid-cols-12 gap-4 px-4 py-2 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+          <div className="col-span-3">Agent</div>
+          <div className="col-span-3 pl-2">Affectation</div>
+          <div className="col-span-3 pl-4">Charge</div>
+          <div className="col-span-3 pl-4">Optimum</div>
         </div>
-      )}
-      {success && (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm">
-          {success}
-        </div>
-      )}
-      {loading ? (
-        <p className="text-sm text-slate-400">Chargement des agents...</p>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span>
-              {agents.length === 0
-                ? 'Aucun agent à afficher.'
-                : `Affichage de ${(page - 1) * pageSize + 1} à ${Math.min(
-                    page * pageSize,
-                    agents.length
-                  )} sur ${agents.length} agents`}
-            </span>
-            <div className="flex items-center gap-2">
-              <span>Par page</span>
-              <select
-                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100"
-                value={pageSize}
-                onChange={(e) => handleChangePageSize(e.target.value)}
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-            </div>
+
+        {loading ? (
+          <div className="space-y-2 animate-pulse">
+            {[1, 2, 3].map(i => <div key={i} className="h-16 bg-slate-800/30 rounded-lg border border-white/5" />)}
           </div>
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/40">
-            <table className="min-w-full text-xs">
-              <thead className="bg-slate-900/70 border-b border-slate-800">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Matricule</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Nom</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Quartier</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Charge estimée</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Recommandation</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentPageItems.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="px-4 py-6 text-center text-xs text-slate-500"
-                    >
-                      Aucun agent.
-                    </td>
-                  </tr>
-                )}
-                {currentPageItems.map((a) => (
-                  <tr key={a.id_agent} className="border-t border-slate-800/60 hover:bg-slate-900/40">
-                    <td className="px-4 py-2 text-slate-100">{a.matricule_rh}</td>
-                    <td className="px-4 py-2 text-slate-300">
-                      {a.nom} {a.prenom}
-                    </td>
-                    <td className="px-4 py-2 text-slate-300">
-                      <select
-                        className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100"
-                        value={a.quartier?.id_quartier || ''}
-                        onChange={(e) => handleChangeQuartier(a.id_agent, Number(e.target.value))}
-                      >
-                        <option value="">Non affecté</option>
-                        {quartiers.map((q) => (
-                          <option key={q.id_quartier} value={q.id_quartier}>
-                            {q.libelle}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-4 py-2 text-slate-300">
-                      {updatingId === a.id_agent ? (
-                        'Mise à jour...'
-                      ) : (
-                        <div>
-                          <div>{a.charge_estimee} adresses</div>
-                          {a.ratio_optimal && (
-                            <div className="text-[10px] text-slate-500">
-                              Ratio: {a.ratio_optimal} adr/agent
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-slate-300">
-                      {a.quartier && a.charge_estimee > 0 ? (
-                        <div className="text-[10px]">
-                          {a.agents_actuels < a.agents_recommandes ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
-                              ⚠ {a.agents_recommandes - a.agents_actuels} agent(s) manquant(s)
-                            </span>
-                          ) : a.agents_actuels === a.agents_recommandes ? (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                              ✓ Optimal
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                              ℹ Bien réparti
-                            </span>
-                          )}
-                          <div className="mt-1 text-slate-500">
-                            {a.agents_actuels}/{a.agents_recommandes} agent(s)
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-slate-500 text-[10px]">-</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        ) : (
+          <div className="min-h-[300px]">
+            {paginatedData.length === 0 ? <div className="p-8 text-center text-slate-500">Aucun agent</div> :
+              paginatedData.map((a, i) => <AgentRow key={a.id_agent} a={a} index={i} quartiers={quartiers} onAssign={handleAssign} />)
+            }
           </div>
-          {agents.length > 0 && (
-            <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
-              <span>
-                Page {page} sur {totalPages}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={page === 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="px-2 py-1 rounded border border-slate-700 disabled:opacity-40 hover:bg-slate-800"
-                >
-                  Précédent
-                </button>
-                <button
-                  type="button"
-                  disabled={page === totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="px-2 py-1 rounded border border-slate-700 disabled:opacity-40 hover:bg-slate-800"
-                >
-                  Suivant
-                </button>
-              </div>
-            </div>
-          )}
+        )}
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-slate-500 pt-4 border-t border-white/5">
+        <span>Page {page} sur {totalPages}</span>
+        <div className="flex gap-2">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded-lg hover:bg-white/5 disabled:opacity-30"><ChevronLeft size={16} /></button>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="p-1.5 rounded-lg hover:bg-white/5 disabled:opacity-30"><ChevronRight size={16} /></button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
 export default DashboardAgents;
-
-

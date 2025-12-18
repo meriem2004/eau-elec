@@ -1,355 +1,228 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, Filter, Calendar, Zap, Droplets, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 
-const Badge = ({ variant = 'default', children }) => {
-  const base = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium';
-  const variants = {
-    default: 'bg-slate-800 text-slate-200',
-    blue: 'bg-sky-500/10 text-sky-300 border border-sky-500/40',
-    yellow: 'bg-amber-500/10 text-amber-300 border border-amber-500/40'
-  };
-  return <span className={`${base} ${variants[variant]}`}>{children}</span>;
+const CompactRow = ({ r, index }) => {
+  const isElec = r.type_compteur !== 'EAU';
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.03 }}
+      className={`group relative grid grid-cols-12 gap-4 items-center p-3 my-1 rounded-lg border border-white/5 hover:bg-white/5 transition-all cursor-pointer ${isElec ? 'hover:border-elec-500/30 border-l-[3px] border-l-elec-500' : 'hover:border-water-500/30 border-l-[3px] border-l-water-500'
+        } bg-slate-800/40 backdrop-blur-sm shadow-sm`}
+    >
+      {/* Date */}
+      <div className="col-span-3 text-xs text-slate-300 font-mono">
+        {new Date(r.date_releve).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}
+        <span className="text-slate-500 ml-2">{new Date(r.date_releve).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
+
+      {/* Info Compteur */}
+      <div className="col-span-3">
+        <div className="flex items-center gap-2">
+          {isElec ? <Zap size={14} className="text-elec-400" /> : <Droplets size={14} className="text-water-400" />}
+          <span className="text-sm font-bold text-slate-200">{r.numero_serie}</span>
+        </div>
+        <p className="text-[10px] text-slate-500 uppercase tracking-wider pl-6">{r.quartier || 'Non défini'}</p>
+      </div>
+
+      {/* Indexes */}
+      <div className="col-span-3 flex items-center justify-between px-4 border-x border-white/5">
+        <div className="text-right">
+          <span className="block text-[10px] text-slate-500">Ancien</span>
+          <span className="text-xs text-slate-400 font-mono">{r.ancien_index}</span>
+        </div>
+        <div className="text-right">
+          <span className="block text-[10px] text-slate-500">Nouveau</span>
+          <span className="text-sm text-slate-200 font-mono font-bold">{r.nouvel_index}</span>
+        </div>
+      </div>
+
+      {/* Consommation */}
+      <div className="col-span-2 text-right pr-4">
+        <span className={`text-sm font-bold ${isElec ? 'text-elec-400' : 'text-water-400'}`}>
+          {r.consommation}
+        </span>
+        <span className="text-[10px] text-slate-500 ml-1">unités</span>
+      </div>
+
+      {/* Agent Avatar */}
+      <div className="col-span-1 flex justify-end">
+        {r.agent ? (
+          <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-300 border border-white/10" title={`${r.agent.prenom} ${r.agent.nom}`}>
+            {r.agent.prenom[0]}{r.agent.nom[0]}
+          </div>
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-slate-800 border border-dashed border-slate-600" />
+        )}
+      </div>
+    </motion.div>
+  );
 };
 
 function DashboardReleves() {
   const [releves, setReleves] = useState([]);
-  const [loadingReleves, setLoadingReleves] = useState(false);
-  const [relevesError, setRelevesError] = useState('');
-  const [filters, setFilters] = useState({
-    dateFrom: '',
-    dateTo: '',
-    quartier: 'ALL'
-  });
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
-  const [sortBy, setSortBy] = useState('date_releve');
-  const [sortDirection, setSortDirection] = useState('desc'); // 'asc' | 'desc'
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const loadReleves = async () => {
-    setLoadingReleves(true);
-    setRelevesError('');
+  // Filters
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [quartier, setQuartier] = useState('ALL');
+  const [typeFilter, setTypeFilter] = useState('ALL');
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
+
+  const loadData = async () => {
+    setLoading(true);
     try {
       const { data } = await api.get('/releves');
       setReleves(data);
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error(err);
-      setRelevesError("Impossible de charger les relevés.");
+      setError("Erreur chargement.");
     } finally {
-      setLoadingReleves(false);
+      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadReleves();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
-  const quartiersOptions = useMemo(() => {
-    const set = new Set();
-    releves.forEach((r) => {
-      if (r.quartier) set.add(r.quartier);
-    });
-    return Array.from(set).sort();
-  }, [releves]);
+  // Compute Neighborhoods
+  const quartiers = useMemo(() => Array.from(new Set(releves.map(r => r.quartier).filter(Boolean))).sort(), [releves]);
 
-  const filteredReleves = useMemo(() => {
-    const base = releves.filter((r) => {
+  // Filtering Logic
+  const filteredData = useMemo(() => {
+    return releves.filter(r => {
       const d = new Date(r.date_releve);
-      if (filters.dateFrom && d < new Date(filters.dateFrom)) return false;
-      if (filters.dateTo && d > new Date(filters.dateTo)) return false;
-      if (filters.quartier !== 'ALL' && r.quartier !== filters.quartier) return false;
+      if (dateFrom && d < new Date(dateFrom)) return false;
+      if (dateTo && d > new Date(dateTo)) return false;
+      if (quartier !== 'ALL' && r.quartier !== quartier) return false;
+      if (typeFilter !== 'ALL') {
+        if (typeFilter === 'EAU' && r.type_compteur !== 'EAU') return false;
+        if (typeFilter === 'ELEC' && r.type_compteur === 'EAU') return false;
+      }
       return true;
-    });
+    }).sort((a, b) => new Date(b.date_releve) - new Date(a.date_releve));
+  }, [releves, dateFrom, dateTo, quartier, typeFilter]);
 
-    const sorted = [...base].sort((a, b) => {
-      const dir = sortDirection === 'asc' ? 1 : -1;
-
-      if (sortBy === 'date_releve') {
-        return (new Date(a.date_releve) - new Date(b.date_releve)) * dir;
-      }
-      if (sortBy === 'numero_serie') {
-        return a.numero_serie.localeCompare(b.numero_serie) * dir;
-      }
-      if (sortBy === 'quartier') {
-        return (a.quartier || '').localeCompare(b.quartier || '') * dir;
-      }
-      if (sortBy === 'consommation') {
-        return (a.consommation - b.consommation) * dir;
-      }
-      return 0;
-    });
-
-    return sorted;
-  }, [releves, filters, sortBy, sortDirection]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredReleves.length / pageSize));
-
-  const currentPageItems = useMemo(() => {
+  const paginatedData = useMemo(() => {
     const start = (page - 1) * pageSize;
-    return filteredReleves.slice(start, start + pageSize);
-  }, [filteredReleves, page, pageSize]);
+    return filteredData.slice(start, start + pageSize);
+  }, [filteredData, page, pageSize]);
 
-  const handleChangePageSize = (value) => {
-    const size = Number(value);
-    setPageSize(size);
-    setPage(1);
-  };
-
-  const toggleSort = (field) => {
-    setPage(1);
-    setSortBy((prevField) => {
-      if (prevField === field) {
-        setSortDirection((prevDir) => (prevDir === 'asc' ? 'desc' : 'asc'));
-        return prevField;
-      }
-      setSortDirection('asc');
-      return field;
-    });
-  };
+  const totalPages = Math.ceil(filteredData.length / pageSize);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Liste des relevés</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Visualisez les relevés avec filtres par période et quartier.
-          </p>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Relevés de Consommation</h2>
+          <p className="text-slate-400 text-sm">Suivi temps réel des index eau et électricité.</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-        <div>
-          <label className="block text-xs text-slate-400 mb-1" htmlFor="dateFrom">
-            Date début
-          </label>
-          <input
-            id="dateFrom"
-            type="date"
-            className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100"
-            value={filters.dateFrom}
-            onChange={(e) => setFilters((f) => ({ ...f, dateFrom: e.target.value }))}
-          />
+      {/* Advanced Filter Bar */}
+      <div className="glass-panel p-4 rounded-2xl border border-white/10 flex flex-col lg:flex-row items-center gap-4">
+        <div className="flex items-center gap-2 w-full lg:w-auto text-slate-300 bg-slate-900/50 px-3 py-2 rounded-xl border border-white/5">
+          <Calendar size={16} className="text-accent-500" />
+          <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="bg-transparent text-xs outline-none w-28" placeholder="Du" />
+          <span className="text-slate-600">-</span>
+          <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="bg-transparent text-xs outline-none w-28" placeholder="Au" />
         </div>
-        <div>
-          <label className="block text-xs text-slate-400 mb-1" htmlFor="dateTo">
-            Date fin
-          </label>
-          <input
-            id="dateTo"
-            type="date"
-            className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100"
-            value={filters.dateTo}
-            onChange={(e) => setFilters((f) => ({ ...f, dateTo: e.target.value }))}
-          />
+
+        <div className="h-8 w-[1px] bg-white/10 hidden lg:block" />
+
+        <div className="flex items-center gap-2 w-full lg:w-auto">
+          <div className="relative flex-1 lg:w-48">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <select
+              value={quartier} onChange={e => setQuartier(e.target.value)}
+              className="w-full bg-slate-900/50 border border-white/5 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-300 outline-none focus:border-accent-500 appearance-none"
+            >
+              <option value="ALL">Tous les quartiers</option>
+              {quartiers.map(q => <option key={q} value={q}>{q}</option>)}
+            </select>
+          </div>
+
+          <div className="flex bg-slate-900/50 rounded-xl p-1 border border-white/5">
+            <button
+              onClick={() => setTypeFilter('ALL')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${typeFilter === 'ALL' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+            >Everything</button>
+            <button
+              onClick={() => setTypeFilter('EAU')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${typeFilter === 'EAU' ? 'bg-water-500/20 text-water-400 shadow-sm border border-water-500/20' : 'text-slate-500 hover:text-water-400'}`}
+            >Eau</button>
+            <button
+              onClick={() => setTypeFilter('ELEC')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${typeFilter === 'ELEC' ? 'bg-elec-500/20 text-elec-400 shadow-sm border border-elec-500/20' : 'text-slate-500 hover:text-elec-400'}`}
+            >Elec</button>
+          </div>
         </div>
-        <div>
-          <label className="block text-xs text-slate-400 mb-1" htmlFor="quartier">
-            Quartier
-          </label>
-          <select
-            id="quartier"
-            className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100"
-            value={filters.quartier}
-            onChange={(e) => setFilters((f) => ({ ...f, quartier: e.target.value }))}
-          >
-            <option value="ALL">Tous les quartiers</option>
-            {quartiersOptions.map((q) => (
-              <option key={q} value={q}>
-                {q}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex gap-2 justify-end md:justify-start">
-          <button
-            type="button"
-            onClick={loadReleves}
-            className="px-3 py-2 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium"
-          >
-            Rafraîchir
+
+        <div className="ml-auto flex gap-2">
+          <button onClick={() => { setDateFrom(''); setDateTo(''); setQuartier('ALL'); setTypeFilter('ALL'); }} className="p-2 text-slate-500 hover:text-white transition-colors" title="Réinitialiser">
+            <Filter size={18} />
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setFilters({ dateFrom: '', dateTo: '', quartier: 'ALL' });
-              setPage(1);
-            }}
-            className="px-3 py-2 text-xs rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"
-          >
-            Réinitialiser
+          <button onClick={loadData} className="p-2 text-accent-500 hover:text-accent-400 transition-colors" title="Rafraîchir">
+            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
 
-      {relevesError && (
-        <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-lg text-sm">
-          {relevesError}
+      {/* Minimized Compact List */}
+      <div className="space-y-1">
+
+        <div className="grid grid-cols-12 gap-4 px-4 py-2 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+          <div className="col-span-3">Date & Heure</div>
+          <div className="col-span-3">Compteur & Zone</div>
+          <div className="col-span-3 text-center">Index (Ancien / Nouveau)</div>
+          <div className="col-span-2 text-right pr-6">Volume</div>
+          <div className="col-span-1 text-right">Agent</div>
         </div>
-      )}
 
-      {loadingReleves ? (
-        <p className="text-sm text-slate-400">Chargement des relevés...</p>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span>
-              {filteredReleves.length === 0
-                ? 'Aucun relevé à afficher.'
-                : `Affichage de ${(page - 1) * pageSize + 1} à ${Math.min(
-                    page * pageSize,
-                    filteredReleves.length
-                  )} sur ${filteredReleves.length} relevés`}
-            </span>
-            <div className="flex items-center gap-2">
-              <span>Par page</span>
-              <select
-                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100"
-                value={pageSize}
-                onChange={(e) => handleChangePageSize(e.target.value)}
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-            </div>
+        {loading ? (
+          <div className="space-y-2 animate-pulse">
+            {[1, 2, 3, 4, 5].map(i => <div key={i} className="h-12 bg-slate-800/30 rounded-lg border border-white/5" />)}
           </div>
-
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/40">
-            <table className="min-w-full text-xs">
-              <thead className="bg-slate-900/70 border-b border-slate-800">
-                <tr>
-                  <th
-                    className="px-3 py-2 text-left font-medium text-slate-400 cursor-pointer select-none"
-                    onClick={() => toggleSort('date_releve')}
-                  >
-                    Date
-                    {sortBy === 'date_releve' && (
-                      <span className="ml-1 text-[10px]">
-                        {sortDirection === 'asc' ? '▲' : '▼'}
-                      </span>
-                    )}
-                  </th>
-                  <th
-                    className="px-3 py-2 text-left font-medium text-slate-400 cursor-pointer select-none"
-                    onClick={() => toggleSort('numero_serie')}
-                  >
-                    Compteur
-                    {sortBy === 'numero_serie' && (
-                      <span className="ml-1 text-[10px]">
-                        {sortDirection === 'asc' ? '▲' : '▼'}
-                      </span>
-                    )}
-                  </th>
-                  <th className="px-3 py-2 text-left font-medium text-slate-400">Type</th>
-                  <th
-                    className="px-3 py-2 text-left font-medium text-slate-400 cursor-pointer select-none"
-                    onClick={() => toggleSort('quartier')}
-                  >
-                    Quartier
-                    {sortBy === 'quartier' && (
-                      <span className="ml-1 text-[10px]">
-                        {sortDirection === 'asc' ? '▲' : '▼'}
-                      </span>
-                    )}
-                  </th>
-                  <th className="px-3 py-2 text-left font-medium text-slate-400">Ancien index</th>
-                  <th className="px-3 py-2 text-left font-medium text-slate-400">Nouvel index</th>
-                  <th
-                    className="px-3 py-2 text-left font-medium text-slate-400 cursor-pointer select-none"
-                    onClick={() => toggleSort('consommation')}
-                  >
-                    Consommation
-                    {sortBy === 'consommation' && (
-                      <span className="ml-1 text-[10px]">
-                        {sortDirection === 'asc' ? '▲' : '▼'}
-                      </span>
-                    )}
-                  </th>
-                  <th className="px-3 py-2 text-left font-medium text-slate-400">Agent</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentPageItems.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-4 py-6 text-center text-xs text-slate-500"
-                    >
-                      Aucun relevé ne correspond aux filtres sélectionnés.
-                    </td>
-                  </tr>
-                )}
-                {currentPageItems.map((r) => {
-                  const type = r.type_compteur;
-                  const badgeVariant = type === 'EAU' ? 'blue' : 'yellow';
-                  return (
-                    <tr
-                      key={r.id_releve}
-                      className="border-t border-slate-800/60 hover:bg-slate-900/40"
-                    >
-                      <td className="px-3 py-2 text-slate-200">
-                        {new Date(r.date_releve).toLocaleString('fr-FR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </td>
-                      <td className="px-3 py-2 text-slate-300">{r.numero_serie}</td>
-                      <td className="px-3 py-2">
-                        <Badge variant={badgeVariant}>
-                          {type === 'EAU' ? 'Eau' : 'Électricité'}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2 text-slate-300">{r.quartier || '-'}</td>
-                      <td className="px-3 py-2 text-slate-300">{r.ancien_index}</td>
-                      <td className="px-3 py-2 text-slate-300">{r.nouvel_index}</td>
-                      <td className="px-3 py-2 text-slate-200 font-medium">
-                        {r.consommation} <span className="text-slate-500">u</span>
-                      </td>
-                      <td className="px-3 py-2 text-slate-300">
-                        {r.agent ? `${r.agent.nom} ${r.agent.prenom}` : '-'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {filteredReleves.length > 0 && (
-            <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
-              <span>
-                Page {page} sur {totalPages}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={page === 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="px-2 py-1 rounded border border-slate-700 disabled:opacity-40 hover:bg-slate-800"
-                >
-                  Précédent
-                </button>
-                <button
-                  type="button"
-                  disabled={page === totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="px-2 py-1 rounded border border-slate-700 disabled:opacity-40 hover:bg-slate-800"
-                >
-                  Suivant
-                </button>
+        ) : (
+          <div className="min-h-[300px]">
+            {paginatedData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 text-slate-500 text-sm">
+                <Filter size={32} className="mb-2 opacity-50" />
+                Aucun résultat trouvé
               </div>
-            </div>
-          )}
+            ) : (
+              paginatedData.map((r, i) => <CompactRow key={r.id_releve} r={r} index={i} />)
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between text-xs text-slate-500 pt-4 border-t border-white/5">
+        <span>Affichage {((page - 1) * pageSize) + 1}-{Math.min(page * pageSize, filteredData.length)} sur {filteredData.length}</span>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+            className="p-1.5 rounded-lg hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}
+            className="p-1.5 rounded-lg hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <ChevronRight size={16} />
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
 export default DashboardReleves;
-
-

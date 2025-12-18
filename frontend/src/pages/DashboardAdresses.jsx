@@ -1,351 +1,206 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../services/api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { RefreshCw, MapPin, Home, Plus, ChevronLeft, ChevronRight, X } from 'lucide-react';
+
+const AddressRow = ({ a, index, onAssociate }) => {
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.03 }}
+      className="group relative grid grid-cols-12 gap-4 items-center p-3 my-1 rounded-lg border border-white/5 hover:bg-white/5 transition-all cursor-pointer border-l-[3px] border-l-slate-600 hover:border-l-slate-400 bg-slate-800/40 backdrop-blur-sm shadow-sm"
+    >
+      {/* Address Text */}
+      <div className="col-span-5 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-slate-700/50 flex items-center justify-center text-slate-400 border border-white/5">
+          <Home size={14} />
+        </div>
+        <div className="min-w-0">
+          <span className="block text-sm font-bold text-slate-200 truncate">{a.libelle_complet}</span>
+          <span className="text-[10px] text-slate-500 font-mono">REF: {a.ref_adresse_erp || 'N/A'}</span>
+        </div>
+      </div>
+
+      {/* Zone */}
+      <div className="col-span-3 pl-4 border-l border-white/5">
+        <div className="flex items-center gap-1.5">
+          <MapPin size={12} className="text-slate-500" />
+          <span className="text-xs text-slate-300">{a.quartier?.libelle || 'Hors zone'}</span>
+        </div>
+        <span className="text-[10px] text-slate-500 ml-4.5 block">{a.quartier?.ville || 'Rabat'}</span>
+      </div>
+
+      {/* Meters Count */}
+      <div className="col-span-2 text-center border-l border-white/5">
+        {a.nb_compteurs === 0 ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            0 Compteurs
+          </span>
+        ) : (
+          <div className="flex flex-col items-center">
+            <span className="text-lg font-bold text-white leading-none">{a.nb_compteurs}</span>
+            <span className="text-[9px] text-slate-500 uppercase">Compteurs</span>
+          </div>
+        )}
+      </div>
+
+      {/* Action */}
+      <div className="col-span-2 flex justify-end">
+        {a.nb_compteurs === 0 && (
+          <button
+            onClick={() => onAssociate(a)}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 text-xs font-semibold transition-colors"
+          >
+            <Plus size={14} /> Associer
+          </button>
+        )}
+      </div>
+
+    </motion.div>
+  );
+};
 
 function DashboardAdresses() {
   const [adresses, setAdresses] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+
   const [filter, setFilter] = useState('ALL');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize] = useState(15);
+
   const [showAssociateModal, setShowAssociateModal] = useState(false);
   const [selectedAdresse, setSelectedAdresse] = useState(null);
-  const [associateForm, setAssociateForm] = useState({
-    numero_serie: '',
-    type: 'EAU',
-    id_client: ''
-  });
+  const [associateForm, setAssociateForm] = useState({ numero_serie: '', type: 'EAU', id_client: '' });
   const [submitting, setSubmitting] = useState(false);
 
   const loadAdresses = async () => {
     setLoading(true);
-    setError('');
     try {
       const params = {};
       if (filter === 'WITH') params.hasCompteur = 'true';
       if (filter === 'WITHOUT') params.hasCompteur = 'false';
       const { data } = await api.get('/adresses', { params });
       setAdresses(data);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      setError("Impossible de charger les adresses.");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
   const loadClients = async () => {
-    try {
-      const { data } = await api.get('/clients');
-      setClients(data || []);
-      // eslint-disable-next-line no-console
-      console.log('Clients chargés:', data?.length || 0);
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Erreur lors du chargement des clients:', err);
-      setClients([]);
-    }
+    try { const { data } = await api.get('/clients'); setClients(data || []); } catch (e) { }
   };
 
-  useEffect(() => {
-    loadAdresses();
-    loadClients();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
+  useEffect(() => { loadAdresses(); loadClients(); }, [filter]);
 
-  const totalPages = Math.max(1, Math.ceil(adresses.length / pageSize));
-
-  const currentPageItems = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return adresses.slice(start, start + pageSize);
-  }, [adresses, page, pageSize]);
-
-  const handleChangePageSize = (value) => {
-    const size = Number(value);
-    setPageSize(size);
-    setPage(1);
-  };
-
-  const handleAssociateCompteur = (adresse) => {
-    setSelectedAdresse(adresse);
-    setAssociateForm({ numero_serie: '', type: 'EAU', id_client: '' });
-    setShowAssociateModal(true);
-    setError('');
-    setSuccess('');
-  };
-
-  const handleAssociateInputChange = (e) => {
-    const { name, value } = e.target;
-    setAssociateForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmitAssociate = async (e) => {
+  const handleAssociate = async (e) => {
     e.preventDefault();
-    if (!selectedAdresse) return;
-
-    setError('');
-    setSuccess('');
     setSubmitting(true);
     try {
-      await api.post('/compteurs', {
-        ...associateForm,
-        id_adresse: selectedAdresse.id_adresse
-      });
-      setSuccess('Compteur associé avec succès.');
+      await api.post('/compteurs', { ...associateForm, id_adresse: selectedAdresse.id_adresse });
       setShowAssociateModal(false);
-      await loadAdresses();
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      setError(err.response?.data?.message || "Impossible d'associer le compteur.");
-    } finally {
-      setSubmitting(false);
-    }
+      loadAdresses();
+    } catch (e) { console.error(e); } finally { setSubmitting(false); }
   };
 
+  const paginatedData = adresses.slice((page - 1) * pageSize, page * pageSize);
+  const totalPages = Math.ceil(adresses.length / pageSize);
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">Gestion des adresses</h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Liste des adresses avec leur quartier et le nombre de compteurs associés.
-          </p>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Zones & Adresses</h2>
+          <p className="text-slate-400 text-sm">Cartographie du réseau et points de fourniture.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <select
-            className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs text-slate-100"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          >
-            <option value="ALL">Toutes</option>
-            <option value="WITH">Avec compteurs</option>
-            <option value="WITHOUT">Sans compteur</option>
-          </select>
-          <button
-            type="button"
-            onClick={loadAdresses}
-            className="px-3 py-1.5 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100"
-          >
-            Rafraîchir
-          </button>
+
+        <div className="flex bg-slate-900/50 rounded-xl p-1 border border-white/5">
+          {['ALL', 'WITH', 'WITHOUT'].map(f => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${filter === f ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+            >
+              {f === 'ALL' ? 'Tout' : f === 'WITH' ? 'Connectés' : 'Vierges'}
+            </button>
+          ))}
         </div>
       </div>
-      {error && (
-        <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 p-3 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
-      {success && (
-        <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-lg text-sm">
-          {success}
-        </div>
-      )}
-      {loading ? (
-        <p className="text-sm text-slate-400">Chargement des adresses...</p>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-[11px] text-slate-400">
-            <span>
-              {adresses.length === 0
-                ? 'Aucune adresse à afficher.'
-                : `Affichage de ${(page - 1) * pageSize + 1} à ${Math.min(
-                    page * pageSize,
-                    adresses.length
-                  )} sur ${adresses.length} adresses`}
-            </span>
-            <div className="flex items-center gap-2">
-              <span>Par page</span>
-              <select
-                className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[11px] text-slate-100"
-                value={pageSize}
-                onChange={(e) => handleChangePageSize(e.target.value)}
-              >
-                <option value={10}>10</option>
-                <option value={20}>20</option>
-                <option value={50}>50</option>
-              </select>
-            </div>
-          </div>
-          <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-950/40">
-            <table className="min-w-full text-xs">
-              <thead className="bg-slate-900/70 border-b border-slate-800">
-                <tr>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Adresse</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Quartier</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Ville</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Ref ERP</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Nb compteurs</th>
-                  <th className="px-4 py-2 text-left font-medium text-slate-400">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {currentPageItems.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={6}
-                      className="px-4 py-6 text-center text-xs text-slate-500"
-                    >
-                      Aucune adresse.
-                    </td>
-                  </tr>
-                )}
-                {currentPageItems.map((a) => (
-                  <tr key={a.id_adresse} className="border-t border-slate-800/60 hover:bg-slate-900/40">
-                    <td className="px-4 py-2 text-slate-100">{a.libelle_complet}</td>
-                    <td className="px-4 py-2 text-slate-300">{a.quartier?.libelle || '-'}</td>
-                    <td className="px-4 py-2 text-slate-300">{a.quartier?.ville || '-'}</td>
-                    <td className="px-4 py-2 text-slate-300">{a.ref_adresse_erp || '-'}</td>
-                    <td className="px-4 py-2 text-slate-300">
-                      {a.nb_compteurs === 0 ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                          Sans compteur
-                        </span>
-                      ) : (
-                        a.nb_compteurs
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-xs text-slate-300">
-                      {a.nb_compteurs === 0 && (
-                        <button
-                          type="button"
-                          onClick={() => handleAssociateCompteur(a)}
-                          className="px-2 py-1 rounded border border-indigo-600 text-indigo-400 hover:bg-indigo-600/10"
-                        >
-                          Associer
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {adresses.length > 0 && (
-            <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
-              <span>
-                Page {page} sur {totalPages}
-              </span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  disabled={page === 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="px-2 py-1 rounded border border-slate-700 disabled:opacity-40 hover:bg-slate-800"
-                >
-                  Précédent
-                </button>
-                <button
-                  type="button"
-                  disabled={page === totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="px-2 py-1 rounded border border-slate-700 disabled:opacity-40 hover:bg-slate-800"
-                >
-                  Suivant
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
-      {showAssociateModal && selectedAdresse && (
-        <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-md bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-2xl">
-            <h3 className="text-lg font-semibold text-slate-100 mb-2">Associer un compteur</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Adresse : <span className="text-slate-300">{selectedAdresse.libelle_complet}</span>
-            </p>
-            <form onSubmit={handleSubmitAssociate} className="space-y-3">
-              <div>
-                <label className="block text-xs text-slate-400 mb-1" htmlFor="assoc-numero_serie">
-                  Numéro de série (optionnel, 9 chiffres)
-                </label>
-                <input
-                  id="assoc-numero_serie"
-                  name="numero_serie"
-                  type="text"
-                  maxLength={9}
-                  value={associateForm.numero_serie}
-                  onChange={handleAssociateInputChange}
-                  placeholder="000000001"
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1" htmlFor="assoc-type">
-                  Type
-                </label>
-                <select
-                  id="assoc-type"
-                  name="type"
-                  required
-                  value={associateForm.type}
-                  onChange={handleAssociateInputChange}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  <option value="EAU">EAU</option>
-                  <option value="ELECTRICITE">ELECTRICITE</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-slate-400 mb-1" htmlFor="assoc-id_client">
-                  Client *
-                </label>
-                <select
-                  id="assoc-id_client"
-                  name="id_client"
-                  required
-                  value={associateForm.id_client}
-                  onChange={handleAssociateInputChange}
-                  className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  disabled={clients.length === 0}
-                >
-                  <option value="">
-                    {clients.length === 0 ? 'Aucun client disponible' : 'Sélectionner un client'}
-                  </option>
-                  {clients.map((c) => (
-                    <option key={c.id_client} value={c.id_client}>
-                      {c.nom_complet}
-                    </option>
-                  ))}
-                </select>
-                {clients.length === 0 && (
-                  <p className="text-xs text-rose-400 mt-1">
-                    Aucun client trouvé. Veuillez d&apos;abord importer des clients via l&apos;intégration ERP.
-                  </p>
-                )}
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAssociateModal(false);
-                    setSelectedAdresse(null);
-                  }}
-                  className="px-3 py-2 text-xs rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-3 py-2 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium disabled:opacity-60"
-                >
-                  {submitting ? 'Association...' : 'Associer'}
-                </button>
-              </div>
-            </form>
-          </div>
+      <div className="space-y-1">
+        <div className="grid grid-cols-12 gap-4 px-4 py-2 text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+          <div className="col-span-5">Adresse</div>
+          <div className="col-span-3 pl-4">Zone</div>
+          <div className="col-span-2 text-center">Équipement</div>
+          <div className="col-span-2 text-right">Action</div>
         </div>
-      )}
+
+        {loading ? (
+          <div className="space-y-2 animate-pulse">
+            {[1, 2, 3].map(i => <div key={i} className="h-14 bg-slate-800/30 rounded-lg border border-white/5" />)}
+          </div>
+        ) : (
+          <div className="min-h-[300px]">
+            {paginatedData.length === 0 ? <div className="p-8 text-center text-slate-500">Aucune adresse</div> :
+              paginatedData.map((a, i) => <AddressRow key={a.id_adresse} a={a} index={i} onAssociate={(addr) => { setSelectedAdresse(addr); setShowAssociateModal(true); }} />)
+            }
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-slate-500 pt-4 border-t border-white/5">
+        <span>Page {page} sur {totalPages}</span>
+        <div className="flex gap-2">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded-lg hover:bg-white/5 disabled:opacity-30"><ChevronLeft size={16} /></button>
+          <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages} className="p-1.5 rounded-lg hover:bg-white/5 disabled:opacity-30"><ChevronRight size={16} /></button>
+        </div>
+      </div>
+
+      {/* Associate Modal */}
+      <AnimatePresence>
+        {showAssociateModal && selectedAdresse && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAssociateModal(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-slate-900 border border-white/10 rounded-2xl p-6 shadow-2xl">
+              <h3 className="text-lg font-bold text-white mb-2">Raccordement Compteur</h3>
+              <div className="mb-4 p-3 bg-white/5 rounded-lg border border-white/5">
+                <p className="text-[10px] uppercase text-slate-500 font-bold">Adresse</p>
+                <p className="text-sm text-slate-200">{selectedAdresse.libelle_complet}</p>
+              </div>
+              <form onSubmit={handleAssociate} className="space-y-3">
+                <div>
+                  <label className="text-xs text-slate-400 uppercase font-bold mb-1 block">Type</label>
+                  <select
+                    value={associateForm.type}
+                    onChange={e => setAssociateForm({ ...associateForm, type: e.target.value })}
+                    className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-accent-500 outline-none"
+                  >
+                    <option value="EAU">EAU</option>
+                    <option value="ELECTRICITE">ELECTRICITE</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-400 uppercase font-bold mb-1 block">Client</label>
+                  <select
+                    value={associateForm.id_client}
+                    onChange={e => setAssociateForm({ ...associateForm, id_client: e.target.value })}
+                    className="w-full bg-slate-800 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:border-accent-500 outline-none"
+                    required
+                  >
+                    <option value="">Sélectionner...</option>
+                    {clients.map(c => <option key={c.id_client} value={c.id_client}>{c.nom_complet}</option>)}
+                  </select>
+                </div>
+                <div className="flex justify-end gap-3 pt-4">
+                  <button type="button" onClick={() => setShowAssociateModal(false)} className="px-4 py-2 text-slate-400 hover:text-white text-sm">Annuler</button>
+                  <button type="submit" disabled={submitting} className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-medium shadow-lg shadow-emerald-500/20 text-sm">Associer</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 export default DashboardAdresses;
-
-

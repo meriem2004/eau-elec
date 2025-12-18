@@ -16,8 +16,11 @@ function App() {
 
   if (!showApp) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-50">
-        <p className="text-sm text-slate-400">Initialisation de l&apos;application...</p>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 text-slate-900">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-8 h-8 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-sm text-slate-500 font-medium">Initialisation de l&apos;application...</p>
+        </div>
       </div>
     );
   }
